@@ -1,79 +1,104 @@
 package com.customgeocache.app.ui.map
 
 /**
- * Mapy.com tile zdroj. Mapy.com (developer.mapy.com) v současnosti vystavuje
- * raster XYZ tiles na endpointu:
+ * Tile provider — všechny mapové podklady, které appka umí. URLs ověřené proti c:geo
+ * `tileproviders` package.
  *
- *     https://api.mapy.cz/v1/maptiles/{layer}/256/{z}/{x}/{y}?apikey=KEY
- *
- * Vector style.json neposkytují, takže místo `MapLibre.setStyle(url)` sestavujeme
- * inline MapLibre style JSON s jedinou raster vrstvou. Pan/zoom/rotace jdou pořád
- * přes GPU — UX zůstává moderní, jen tiles jsou bitmapové.
- *
- * Vrstvy:
- *   basic    — výchozí, plná mapa
- *   outdoor  — turistická + výškopis
- *   aerial   — letecký pohled
- *   winter   — zimní mapa s vleky a sjezdovkami
+ * Mapy.com vrstvy vyžadují uživatelův API klíč ze [developer.mapy.com](https://developer.mapy.com).
+ * Bez klíče se uplatní fallback na OSM (viz `effective()`).
  */
-enum class MapyLayer(val id: String, val displayName: String, val maxZoom: Int) {
-    BASIC("basic", "Basic", 19),
-    OUTDOOR("outdoor", "Outdoor", 19),
-    AERIAL("aerial", "Letecká", 20),
-    WINTER("winter", "Zimní", 18);
+enum class MapTileProvider(
+    val id: String,
+    val displayName: String,
+    private val tileUrlTemplate: String,
+    val maxZoom: Int,
+    val tileSize: Int,
+    val attributionHtml: String,
+    val requiresApiKey: Boolean
+) {
+    MAPY_BASIC(
+        "basic", "Mapy.com Basic",
+        "https://api.mapy.cz/v1/maptiles/basic/256/{z}/{x}/{y}?apikey={API_KEY}",
+        19, 256,
+        "&copy; <a href='https://mapy.com'>Seznam.cz</a>", true
+    ),
+    MAPY_OUTDOOR(
+        "outdoor", "Mapy.com Outdoor",
+        "https://api.mapy.cz/v1/maptiles/outdoor/256/{z}/{x}/{y}?apikey={API_KEY}",
+        19, 256,
+        "&copy; <a href='https://mapy.com'>Seznam.cz</a>", true
+    ),
+    MAPY_AERIAL(
+        "aerial", "Mapy.com Letecká",
+        "https://api.mapy.cz/v1/maptiles/aerial/256/{z}/{x}/{y}?apikey={API_KEY}",
+        20, 256,
+        "&copy; <a href='https://mapy.com'>Seznam.cz</a>", true
+    ),
+    MAPY_WINTER(
+        "winter", "Mapy.com Zimní",
+        "https://api.mapy.cz/v1/maptiles/winter/256/{z}/{x}/{y}?apikey={API_KEY}",
+        18, 256,
+        "&copy; <a href='https://mapy.com'>Seznam.cz</a>", true
+    ),
+    OSM(
+        "osm", "OpenStreetMap",
+        "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+        18, 256,
+        "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors",
+        false
+    ),
+    OSM_DE(
+        "osmde", "OSM Deutsch",
+        "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
+        18, 256,
+        "&copy; OSM Deutschland", false
+    ),
+    OPEN_TOPO(
+        "topo", "OpenTopoMap",
+        "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
+        17, 256,
+        "&copy; OSM, SRTM | Tiles &copy; OpenTopoMap (CC-BY-SA)", false
+    ),
+    CYCLOSM(
+        "cyclosm", "CyclOSM",
+        "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
+        18, 256,
+        "&copy; CyclOSM, OSM contributors", false
+    );
+
+    fun resolvedTileUrl(apiKey: String?): String =
+        tileUrlTemplate.replace("{API_KEY}", apiKey.orEmpty())
 
     companion object {
-        fun fromId(id: String): MapyLayer = entries.firstOrNull { it.id == id } ?: BASIC
+        fun fromId(id: String): MapTileProvider = entries.firstOrNull { it.id == id } ?: OSM
     }
 }
 
-object MapyStyles {
-
-    // Single-quotes uvnitř HTML, ať to neuteklo z JSON stringu (double-quotes by uzavřely
-    // JSON value předčasně a parser by failnul). HTML s single-quotes je validní.
-    private const val ATTRIBUTION =
-        "&copy; <a href='https://mapy.com'>Seznam.cz, a.s.</a>, " +
-        "<a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
-
-    /** XYZ tile URL šablona. MapLibre {z}/{x}/{y} placeholdery musí zůstat nezměněné. */
-    fun tileUrl(layer: MapyLayer, apiKey: String): String =
-        "https://api.mapy.cz/v1/maptiles/${layer.id}/256/{z}/{x}/{y}?apikey=$apiKey"
-
-    /**
-     * Sestaví MapLibre style JSON s jedinou raster vrstvou.
-     * Vrácený řetězec se předá do `Style.Builder().fromJson(...)`.
-     */
-    fun rasterStyleJson(layer: MapyLayer, apiKey: String): String {
-        val tile = tileUrl(layer, apiKey)
+object MapStyles {
+    fun rasterStyleJson(provider: MapTileProvider, apiKey: String?): String {
+        val tile = provider.resolvedTileUrl(apiKey)
         return """
             {
               "version": 8,
-              "name": "Mapy.com ${layer.displayName}",
+              "name": "${provider.displayName}",
               "sources": {
-                "mapy": {
+                "tiles": {
                   "type": "raster",
                   "tiles": ["$tile"],
-                  "tileSize": 256,
+                  "tileSize": ${provider.tileSize},
                   "minzoom": 0,
-                  "maxzoom": ${layer.maxZoom},
-                  "attribution": "$ATTRIBUTION"
+                  "maxzoom": ${provider.maxZoom},
+                  "attribution": "${provider.attributionHtml}"
                 }
               },
               "layers": [
-                {
-                  "id": "background",
-                  "type": "background",
-                  "paint": { "background-color": "#e8e8e8" }
-                },
-                {
-                  "id": "mapy-tiles",
-                  "type": "raster",
-                  "source": "mapy",
-                  "minzoom": 0,
-                  "maxzoom": ${layer.maxZoom}
-                }
+                { "id": "background", "type": "background", "paint": { "background-color": "#e8e8e8" } },
+                { "id": "tiles", "type": "raster", "source": "tiles", "minzoom": 0, "maxzoom": ${provider.maxZoom} }
               ]
             }
         """.trimIndent()
     }
 }
+
+/** Backward compat alias — starší kód v MapMarkerIcons / MapScreen volá MapyLayer.fromId. */
+typealias MapyLayer = MapTileProvider

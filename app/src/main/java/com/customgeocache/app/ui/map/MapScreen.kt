@@ -96,7 +96,12 @@ fun MapScreen(
 
     val apiKey by prefs.mapyApiKey.collectAsStateWithLifecycle(initialValue = null)
     val layerId by prefs.mapLayer.collectAsStateWithLifecycle(initialValue = "basic")
-    val layer = remember(layerId) { MapyLayer.fromId(layerId) }
+    // Pokud uživatel nemá Mapy.com klíč, ale má vybranou Mapy vrstvu, automaticky
+    // přepneme zobrazení na OSM (klíč není povinný).
+    val layer = remember(layerId, apiKey) {
+        val raw = MapTileProvider.fromId(layerId)
+        if (raw.requiresApiKey && apiKey.isNullOrBlank()) MapTileProvider.OSM else raw
+    }
     val caches by repo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showLayerSheet by remember { mutableStateOf(false) }
@@ -148,11 +153,11 @@ fun MapScreen(
             .fillMaxSize()
             .padding(contentPadding)
     ) {
-        if (apiKey.isNullOrBlank()) {
-            MissingApiKey()
-        } else {
+        // Mapu vykreslíme vždy — pokud chybí Mapy klíč a není vybraná free vrstva,
+        // `layer` výše už spadl na OSM. Tj. žádný blocking error screen.
+        run {
             MapLibreView(
-                apiKey = apiKey!!,
+                apiKey = apiKey,
                 layer = layer,
                 savedCamera = activeStore.mapCamera,
                 onMapReady = { mapView, map, style ->
@@ -245,6 +250,7 @@ fun MapScreen(
         if (showLayerSheet) {
             LayerPickerCard(
                 current = layer,
+                hasApiKey = !apiKey.isNullOrBlank(),
                 onPick = { picked ->
                     showLayerSheet = false
                     scope.launch { prefs.setMapLayer(picked.id) }
@@ -333,25 +339,9 @@ private fun fitBoundsToCaches(map: MapLibreMap, caches: List<CacheEntity>) {
 }
 
 @Composable
-private fun MissingApiKey() {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = stringResource(R.string.map_no_api_key),
-            style = MaterialTheme.typography.titleMedium
-        )
-    }
-}
-
-@Composable
 private fun MapLibreView(
-    apiKey: String,
-    layer: MapyLayer,
+    apiKey: String?,
+    layer: MapTileProvider,
     savedCamera: MapCameraState?,
     onMapReady: (MapView, MapLibreMap, Style) -> Unit
 ) {
@@ -379,7 +369,7 @@ private fun MapLibreView(
         factory = { mapView },
         update = { view ->
             view.getMapAsync { map ->
-                val styleJson = MapyStyles.rasterStyleJson(layer, apiKey)
+                val styleJson = MapStyles.rasterStyleJson(layer, apiKey)
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                     onMapReady(view, map, style)
                 }
@@ -404,8 +394,9 @@ private fun MapLibreView(
 
 @Composable
 private fun LayerPickerCard(
-    current: MapyLayer,
-    onPick: (MapyLayer) -> Unit,
+    current: MapTileProvider,
+    hasApiKey: Boolean,
+    onPick: (MapTileProvider) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -413,16 +404,47 @@ private fun LayerPickerCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
         modifier = modifier
     ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            MapyLayer.entries.forEach { l ->
-                FilterChip(
-                    selected = l == current,
-                    onClick = { onPick(l) },
-                    label = { Text(l.displayName) }
-                )
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Mapy.com vrstvy
+            Text(
+                "Mapy.com" + if (!hasApiKey) " (chybí klíč)" else "",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                MapTileProvider.entries.filter { it.requiresApiKey }.forEach { l ->
+                    FilterChip(
+                        selected = l == current,
+                        onClick = { onPick(l) },
+                        enabled = hasApiKey,
+                        label = { Text(l.displayName.removePrefix("Mapy.com ").ifBlank { l.displayName }) }
+                    )
+                }
+            }
+            Spacer(Modifier.size(10.dp))
+            Text(
+                "Zdarma",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
+            )
+            androidx.compose.foundation.layout.FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                MapTileProvider.entries.filter { !it.requiresApiKey }.forEach { l ->
+                    FilterChip(
+                        selected = l == current,
+                        onClick = { onPick(l) },
+                        label = { Text(l.displayName) }
+                    )
+                }
             }
         }
     }
