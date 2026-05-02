@@ -1,7 +1,9 @@
 package com.customgeocache.app.ui.home
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Inventory2
@@ -43,6 +45,7 @@ fun HomeScreen(
 
     var tab by rememberSaveable { mutableStateOf(HomeTab.MAP) }
     val requestedTab by activeStore.requestedTab.collectAsStateWithLifecycle(initialValue = null)
+    val activeCache by activeStore.active.collectAsStateWithLifecycle(initialValue = null)
 
     LaunchedEffect(requestedTab) {
         requestedTab?.let { name ->
@@ -64,6 +67,17 @@ fun HomeScreen(
                     )
                 },
                 actions = {
+                    // Když uživatel na Compass tabu má aktivní keš, ukážeme zkratky
+                    // na Detail + Log přímo v top app bar (Compass screen sama by jinak
+                    // toolbar neměla — používá HomeScreen scaffold).
+                    if (tab == HomeTab.COMPASS && activeCache != null) {
+                        IconButton(onClick = { onOpenCache(activeCache!!.gccode) }) {
+                            Icon(Icons.Default.Info, contentDescription = "Detail")
+                        }
+                        IconButton(onClick = { onOpenLog(activeCache!!.gccode) }) {
+                            Icon(Icons.Default.Edit, contentDescription = "Logovat")
+                        }
+                    }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.nav_settings))
                     }

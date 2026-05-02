@@ -64,13 +64,17 @@ class CacheRepository(
         dao.upsert(cache)
 
         val logsCount = if (full.userToken != null) {
+            android.util.Log.i("CGC.Repo", "fetchDetailFull: refreshing logs for $gccode with userToken")
             val logs = detailApi.fetchLogs(gccode, full.userToken)
             if (logs.isNotEmpty()) {
                 dao.deleteLogsForCache(gccode)
                 dao.insertLogs(logs)
             }
             logs.size
-        } else 0
+        } else {
+            android.util.Log.w("CGC.Repo", "fetchDetailFull: no userToken extracted from $gccode html — logs not fetched")
+            0
+        }
 
         DetailResult(cache, full.imageUrls, logsCount)
     }

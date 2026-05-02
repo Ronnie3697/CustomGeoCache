@@ -90,6 +90,12 @@ fun CacheDetailScreen(
                         }
                     }
                     IconButton(onClick = {
+                        vm.navigate()
+                        onLog()
+                    }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Logovat")
+                    }
+                    IconButton(onClick = {
                         val intent = Intent(Intent.ACTION_VIEW,
                             Uri.parse("https://www.geocaching.com/geocache/$gccode"))
                         context.startActivity(intent)

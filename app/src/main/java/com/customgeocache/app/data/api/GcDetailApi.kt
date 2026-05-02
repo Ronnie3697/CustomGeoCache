@@ -38,6 +38,7 @@ class GcDetailApi(private val client: OkHttpClient) {
 
     suspend fun fetchFull(gccode: String, base: CacheEntity? = null): FullDetail =
         withContext(Dispatchers.IO) {
+            Log.i(TAG, "fetchFull start: $gccode")
             val req = Request.Builder()
                 .url("https://www.geocaching.com/geocache/$gccode")
                 .get()
@@ -50,10 +51,13 @@ class GcDetailApi(private val client: OkHttpClient) {
                     }
                     val html = resp.body?.string()
                         ?: return@withContext FullDetail(null, null, emptyList())
+                    val token = extractUserToken(html)
+                    val images = GcDetailParser.extractImages(html)
+                    Log.i(TAG, "fetchFull $gccode ok: html=${html.length}B userToken=${token != null} images=${images.size}")
                     FullDetail(
                         cache = GcDetailParser.parse(gccode, html, base),
-                        userToken = extractUserToken(html),
-                        imageUrls = GcDetailParser.extractImages(html)
+                        userToken = token,
+                        imageUrls = images
                     )
                 }
             } catch (t: Throwable) {
@@ -136,10 +140,14 @@ class GcDetailApi(private val client: OkHttpClient) {
         val LogID: Long?
     )
 
-    /** Vytáhne userToken z HTML detail stránky (potřebný pro logbook endpoint). */
+    /** Vytáhne userToken z HTML detail stránky (potřebný pro logbook endpoint).
+     *  Geocaching.com ho v JS embedded má jako `userToken = '...'` nebo `"userToken":"..."`. */
     fun extractUserToken(html: String): String? {
-        val m = Regex("userToken\\s*=\\s*'([^']+)'").find(html) ?: return null
-        return m.groupValues[1]
+        val singleQuote = Regex("userToken\\s*=\\s*'([^']+)'").find(html)
+        if (singleQuote != null) return singleQuote.groupValues[1]
+        val jsonStyle = Regex("\"userToken\"\\s*:\\s*\"([^\"]+)\"").find(html)
+        if (jsonStyle != null) return jsonStyle.groupValues[1]
+        return null
     }
 
     companion object { private const val TAG = "CGC.Detail" }

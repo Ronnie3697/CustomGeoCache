@@ -477,15 +477,25 @@ private fun CachePreviewCard(
                 Button(onClick = onOpenDetail, modifier = Modifier.weight(1f)) {
                     Text("Detail")
                 }
-                OutlinedButton(onClick = onNavigate, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Navigation, contentDescription = null)
+                OutlinedButton(
+                    onClick = onNavigate,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Navigation, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Naviguj")
+                    Text("Cíl", maxLines = 1, softWrap = false)
                 }
-                OutlinedButton(onClick = onLog, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Default.Edit, contentDescription = null)
+                OutlinedButton(
+                    onClick = onLog,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null,
+                        modifier = Modifier.size(18.dp))
                     Spacer(Modifier.size(4.dp))
-                    Text("Log")
+                    Text("Log", maxLines = 1, softWrap = false)
                 }
             }
         }
