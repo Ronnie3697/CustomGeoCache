@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CustomGeoCache</string>
+
+    <!-- Setup wizard -->
+    <string name="setup_welcome_title">Vítej v CustomGeoCache</string>
+    <string name="setup_welcome_subtitle">Moderní geocaching klient. Provedu tě nastavením — zabere to minutku.</string>
+    <string name="setup_continue">Pokračovat</string>
+    <string name="setup_back">Zpět</string>
+    <string name="setup_finish">Hotovo</string>
+
+    <string name="setup_folder_title">Vyber složku pro data</string>
+    <string name="setup_folder_subtitle">Sem se budou ukládat stažené keše, GPX exporty a další soubory. Můžeš použít jakoukoliv složku v telefonu — třeba si vytvoř novou s názvem \"CustomGeoCache\".</string>
+    <string name="setup_folder_pick">Vybrat složku</string>
+    <string name="setup_folder_change">Změnit složku</string>
+    <string name="setup_folder_selected">Vybráno:</string>
+
+    <string name="setup_mapy_title">Mapy.com API klíč</string>
+    <string name="setup_mapy_subtitle">Pro mapy potřebujeme tvůj osobní API klíč z Mapy.com. Je zdarma, dostaneš 250 000 dlaždic měsíčně. Postup:</string>
+    <string name="setup_mapy_step1">1. Otevři developer.mapy.com</string>
+    <string name="setup_mapy_step2">2. Zaregistruj se / přihlaš</string>
+    <string name="setup_mapy_step3">3. Vytvoř si projekt → zkopíruj API klíč</string>
+    <string name="setup_mapy_step4">4. Vlož ho sem ↓</string>
+    <string name="setup_mapy_open">Otevřít developer.mapy.com</string>
+    <string name="setup_mapy_input">API klíč</string>
+    <string name="setup_mapy_skip">Přeskočit (nastavím později)</string>
+
+    <string name="setup_login_title">Přihlášení na geocaching.com</string>
+    <string name="setup_login_subtitle">Zadej své přihlašovací údaje k účtu na geocaching.com. Heslo se ukládá pouze lokálně v zašifrovaném úložišti tvého telefonu.</string>
+    <string name="setup_login_username">Uživatelské jméno</string>
+    <string name="setup_login_password">Heslo</string>
+    <string name="setup_login_button">Přihlásit</string>
+    <string name="setup_login_skip">Přihlásit se později</string>
+    <string name="setup_login_error_invalid">Neplatné přihlašovací údaje</string>
+    <string name="setup_login_error_network">Problém se sítí. Zkontroluj připojení.</string>
+    <string name="setup_login_error_captcha">Geocaching.com vyžaduje captcha. Přihlas se přes web a zkus to znovu.</string>
+    <string name="setup_login_success">Přihlášeno jako</string>
+
+    <!-- Home / Map -->
+    <string name="nav_map">Mapa</string>
+    <string name="nav_caches">Keše</string>
+    <string name="nav_settings">Nastavení</string>
+
+    <string name="map_layer_basic">Basic</string>
+    <string name="map_layer_outdoor">Outdoor</string>
+    <string name="map_layer_aerial">Letecká</string>
+    <string name="map_layer_winter">Zimní</string>
+    <string name="map_my_location">Moje poloha</string>
+    <string name="map_layers">Vrstvy</string>
+    <string name="map_search_here">Hledat keše tady</string>
+
+    <string name="map_no_api_key">Chybí Mapy.com API klíč. Nastav ho v Nastavení → Mapy.com.</string>
+
+    <!-- Cache list / detail -->
+    <string name="caches_empty">Žádné stažené keše. Najdi je na mapě a stáhni.</string>
+    <string name="cache_difficulty">Obtížnost</string>
+    <string name="cache_terrain">Terén</string>
+    <string name="cache_size">Velikost</string>
+    <string name="cache_hint">Hint</string>
+    <string name="cache_description">Popis</string>
+    <string name="cache_logs">Logy</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Nastavení</string>
+    <string name="settings_section_account">Účet</string>
+    <string name="settings_section_map">Mapa</string>
+    <string name="settings_section_storage">Úložiště</string>
+    <string name="settings_section_about">O aplikaci</string>
+    <string name="settings_logout">Odhlásit z geocaching.com</string>
+    <string name="settings_login">Přihlásit na geocaching.com</string>
+    <string name="settings_mapy_key">Mapy.com API klíč</string>
+    <string name="settings_folder">Datová složka</string>
+    <string name="settings_app_version">Verze</string>
+
+    <!-- Permissions -->
+    <string name="permission_location_rationale">Pro zobrazení tvé polohy na mapě potřebujeme přístup k poloze.</string>
+    <string name="permission_grant">Povolit</string>
+
+    <!-- Common -->
+    <string name="common_cancel">Zrušit</string>
+    <string name="common_save">Uložit</string>
+    <string name="common_loading">Načítám…</string>
+    <string name="common_error">Chyba</string>
+    <string name="common_retry">Zkusit znovu</string>
+</resources>

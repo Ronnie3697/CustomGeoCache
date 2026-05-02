@@ -1,0 +1,8 @@
+# Příklad local.properties — zkopíruj jako local.properties a doplň
+# (NIKDY necommituj! je v .gitignore)
+
+sdk.dir=C:\\Users\\YOUR_USER\\AppData\\Local\\Android\\Sdk
+
+# Volitelné: pokud chceš mít Mapy.com API klíč zabudovaný v buildu (pro distribuci kámošům),
+# odkomentuj a doplň. Když nedáš, appka se klíče zeptá ve setup wizardu.
+# MAPY_CZ_API_KEY=your_key_here

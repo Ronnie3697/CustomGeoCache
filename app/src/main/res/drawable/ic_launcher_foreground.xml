@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- map pin shape, outline + fill -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28
+                          C44,28 36,36 36,46
+                          C36,60 54,80 54,80
+                          C54,80 72,60 72,46
+                          C72,36 64,28 54,28
+                          Z" />
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M54,40
+                          m-7,0
+                          a7,7 0 1,0 14,0
+                          a7,7 0 1,0 -14,0" />
+</vector>
