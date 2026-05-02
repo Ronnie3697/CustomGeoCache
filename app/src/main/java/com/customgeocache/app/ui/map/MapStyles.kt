@@ -58,12 +58,6 @@ enum class MapTileProvider(
         "https://c.tile.opentopomap.org/{z}/{x}/{y}.png",
         17, 256,
         "&copy; OSM, SRTM | Tiles &copy; OpenTopoMap (CC-BY-SA)", false
-    ),
-    CYCLOSM(
-        "cyclosm", "CyclOSM",
-        "https://a.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png",
-        18, 256,
-        "&copy; CyclOSM, OSM contributors", false
     );
 
     fun resolvedTileUrl(apiKey: String?): String =
