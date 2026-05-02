@@ -19,6 +19,7 @@ moshi = "1.15.1"
 retrofit = "2.11.0"
 
 maplibre = "11.8.0"
+maplibreAnnotation = "3.0.2"
 playServicesLocation = "21.3.0"
 accompanistPermissions = "0.36.0"
 coil = "2.7.0"
@@ -57,6 +58,7 @@ retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit
 retrofit-moshi = { module = "com.squareup.retrofit2:converter-moshi", version.ref = "retrofit" }
 
 maplibre = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
+maplibre-annotation = { module = "org.maplibre.gl:android-plugin-annotation-v9", version.ref = "maplibreAnnotation" }
 
 playservices-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanistPermissions" }

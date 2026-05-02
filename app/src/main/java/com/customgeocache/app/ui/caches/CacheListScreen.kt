@@ -1,5 +1,6 @@
 package com.customgeocache.app.ui.caches
 
+import android.location.Location
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,8 +36,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.customgeocache.app.CustomGeoCacheApp
 import com.customgeocache.app.R
 import com.customgeocache.app.data.db.entities.CacheEntity
+import com.customgeocache.app.ui.compass.LocationFlow
 import com.customgeocache.app.util.GeoUtils
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CacheListScreen(
     contentPadding: PaddingValues,
@@ -47,15 +54,29 @@ fun CacheListScreen(
     val caches by app.container.cacheRepository.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    // Reference bod pro výpočet vzdálenosti — poslední pozice mapy.
-    // Pokud nemáme, vzdálenost prostě nezobrazíme.
-    val center = activeStore.mapCamera
-
-    val sorted = remember(caches, center) {
-        if (center == null) caches
-        else caches.sortedBy {
-            GeoUtils.distanceMeters(center.lat, center.lon, it.lat, it.lon)
+    // Reference bod pro výpočet vzdálenosti — preferujeme aktuální GPS, fallback na poslední pozici mapy.
+    val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
+    val location by produceState<Location?>(initialValue = null, locationPermission.status.isGranted) {
+        if (!locationPermission.status.isGranted) {
+            value = null
+            return@produceState
         }
+        LocationFlow.observe(context).collect { value = it }
+    }
+
+    val refLat: Double?
+    val refLon: Double?
+    if (location != null) {
+        refLat = location!!.latitude
+        refLon = location!!.longitude
+    } else {
+        refLat = activeStore.mapCamera?.lat
+        refLon = activeStore.mapCamera?.lon
+    }
+
+    val sorted = remember(caches, refLat, refLon) {
+        if (refLat == null || refLon == null) caches
+        else caches.sortedBy { GeoUtils.distanceMeters(refLat, refLon, it.lat, it.lon) }
     }
 
     if (sorted.isEmpty()) {
@@ -72,9 +93,9 @@ fun CacheListScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(sorted, key = { it.gccode }) { cache ->
-                val distance = center?.let {
-                    GeoUtils.distanceMeters(it.lat, it.lon, cache.lat, cache.lon)
-                }
+                val distance = if (refLat != null && refLon != null) {
+                    GeoUtils.distanceMeters(refLat, refLon, cache.lat, cache.lon)
+                } else null
                 CacheCard(
                     cache = cache,
                     distanceText = distance?.let(GeoUtils::formatDistance),
@@ -114,22 +135,20 @@ private fun CacheCard(
                     )
                 }
                 if (distanceText != null) {
-                    Column(horizontalAlignment = Alignment.End) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Place,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.size(2.dp))
-                            Text(
-                                text = distanceText,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Place,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.size(2.dp))
+                        Text(
+                            text = distanceText,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

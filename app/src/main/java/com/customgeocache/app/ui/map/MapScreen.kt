@@ -1,5 +1,7 @@
 package com.customgeocache.app.ui.map
 
+import android.annotation.SuppressLint
+import android.location.Location
 import android.os.Bundle
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
@@ -39,8 +41,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -57,9 +61,11 @@ import com.customgeocache.app.R
 import com.customgeocache.app.data.api.GcSearchApi
 import com.customgeocache.app.data.db.entities.CacheEntity
 import com.customgeocache.app.data.state.MapCameraState
+import com.customgeocache.app.ui.compass.LocationFlow
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
+import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
@@ -95,23 +101,33 @@ fun MapScreen(
 
     var showLayerSheet by remember { mutableStateOf(false) }
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
-    var styleRef by remember { mutableStateOf<Style?>(null) }
     var searching by remember { mutableStateOf(false) }
     var selectedCache by remember { mutableStateOf<CacheEntity?>(null) }
     val snackbar = remember { SnackbarHostState() }
+    val markersHolder = remember { MapMarkersHolder() }
 
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
 
-    LaunchedEffect(caches, styleRef) {
-        styleRef?.let {
-            MapMarkers.update(it, caches)
-            Log.i(TAG, "Markers updated: ${caches.size} caches")
+    // Real-time fused location pro modrou tečku + tlačítko Moje poloha.
+    val location by produceState<Location?>(initialValue = null, locationPermission.status.isGranted) {
+        if (!locationPermission.status.isGranted) {
+            value = null
+            return@produceState
         }
+        LocationFlow.observe(context).collect { value = it }
+    }
+
+    LaunchedEffect(caches) {
+        markersHolder.update(caches)
+        Log.i(TAG, "LaunchedEffect caches=${caches.size}")
+    }
+
+    LaunchedEffect(location) {
+        markersHolder.setUserLocation(location?.latitude, location?.longitude)
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            // Při odchodu z Map tabu uložíme aktuální polohu kamery
             mapRef?.cameraPosition?.let { cp ->
                 activeStore.saveMapCamera(
                     MapCameraState(
@@ -123,6 +139,7 @@ fun MapScreen(
                     )
                 )
             }
+            markersHolder.detach()
         }
     }
 
@@ -138,25 +155,14 @@ fun MapScreen(
                 apiKey = apiKey!!,
                 layer = layer,
                 savedCamera = activeStore.mapCamera,
-                onMapReady = { map, style ->
+                onMapReady = { mapView, map, style ->
                     mapRef = map
-                    styleRef = style
-                    MapMarkers.ensureLayers(style)
-                    MapMarkers.update(style, caches)
-                    Log.i(TAG, "Map ready, markers: ${caches.size}")
+                    markersHolder.attach(mapView, map, style)
+                    markersHolder.update(caches)
+                    location?.let { markersHolder.setUserLocation(it.latitude, it.longitude) }
                     map.addOnMapClickListener { latLng ->
-                        val pixel = map.projection.toScreenLocation(latLng)
-                        val features = map.queryRenderedFeatures(
-                            pixel, MapMarkers.LAYER_CIRCLE, MapMarkers.LAYER_LABEL
-                        )
-                        val gc = features.firstNotNullOfOrNull {
-                            it.getStringProperty("gccode")
-                        }
-                        if (gc != null) {
-                            selectedCache = caches.firstOrNull { it.gccode == gc }
-                        } else {
-                            selectedCache = null
-                        }
+                        val gc = markersHolder.gccodeAt(latLng.latitude, latLng.longitude)
+                        selectedCache = if (gc != null) caches.firstOrNull { it.gccode == gc } else null
                         true
                     }
                 }
@@ -179,7 +185,10 @@ fun MapScreen(
                 onClick = {
                     if (!locationPermission.status.isGranted) {
                         locationPermission.launchPermissionRequest()
+                        return@FloatingActionButton
                     }
+                    val map = mapRef ?: return@FloatingActionButton
+                    moveToMyLocation(context, map)
                 },
                 containerColor = MaterialTheme.colorScheme.surface
             ) {
@@ -187,7 +196,6 @@ fun MapScreen(
             }
         }
 
-        // Search-here FAB
         ExtendedFloatingActionButton(
             onClick = {
                 val map = mapRef ?: return@ExtendedFloatingActionButton
@@ -204,8 +212,6 @@ fun MapScreen(
                     when (r) {
                         is GcSearchApi.Result.Success -> {
                             snackbar.showSnackbar("Nahráno ${r.caches.size} kešek (z ${r.total})")
-                            // Pokud našlo keše, fitneme kameru na jejich bounding box,
-                            // ať uživatel hned vidí, kde jsou.
                             if (r.caches.isNotEmpty() && r.caches.size <= 200) {
                                 fitBoundsToCaches(map, r.caches)
                             }
@@ -280,6 +286,19 @@ fun MapScreen(
     }
 }
 
+@SuppressLint("MissingPermission")
+private fun moveToMyLocation(context: android.content.Context, map: MapLibreMap) {
+    val provider = LocationServices.getFusedLocationProviderClient(context)
+    provider.lastLocation.addOnSuccessListener { loc ->
+        if (loc != null) {
+            map.animateCamera(
+                CameraUpdateFactory.newLatLngZoom(LatLng(loc.latitude, loc.longitude), 16.0),
+                800
+            )
+        }
+    }
+}
+
 private fun fitBoundsToCaches(map: MapLibreMap, caches: List<CacheEntity>) {
     if (caches.isEmpty()) return
     if (caches.size == 1) {
@@ -291,11 +310,13 @@ private fun fitBoundsToCaches(map: MapLibreMap, caches: List<CacheEntity>) {
     var minLat = Double.MAX_VALUE; var maxLat = -Double.MAX_VALUE
     var minLon = Double.MAX_VALUE; var maxLon = -Double.MAX_VALUE
     for (c in caches) {
+        if (c.lat == 0.0 && c.lon == 0.0) continue
         if (c.lat < minLat) minLat = c.lat
         if (c.lat > maxLat) maxLat = c.lat
         if (c.lon < minLon) minLon = c.lon
         if (c.lon > maxLon) maxLon = c.lon
     }
+    if (minLat == Double.MAX_VALUE) return
     val bounds = LatLngBounds.Builder()
         .include(LatLng(minLat, minLon))
         .include(LatLng(maxLat, maxLon))
@@ -324,7 +345,7 @@ private fun MapLibreView(
     apiKey: String,
     layer: MapyLayer,
     savedCamera: MapCameraState?,
-    onMapReady: (MapLibreMap, Style) -> Unit
+    onMapReady: (MapView, MapLibreMap, Style) -> Unit
 ) {
     val context = LocalContext.current
     val mapView = remember {
@@ -352,10 +373,8 @@ private fun MapLibreView(
             view.getMapAsync { map ->
                 val styleJson = MapyStyles.rasterStyleJson(layer, apiKey)
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                    onMapReady(map, style)
+                    onMapReady(view, map, style)
                 }
-                // Obnov kameru, pokud máme uloženou pozici (návrat z jiného tabu).
-                // Jinak zoom 7 / střed ČR.
                 val target = if (savedCamera != null) {
                     CameraPosition.Builder()
                         .target(LatLng(savedCamera.lat, savedCamera.lon))

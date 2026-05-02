@@ -21,8 +21,8 @@ android {
         applicationId = "com.customgeocache.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "0.2.4"
+        versionCode = 11
+        versionName = "0.2.5"
 
         buildConfigField("String", "MAPY_CZ_API_KEY_DEFAULT", "\"$mapyCzApiKey\"")
     }
@@ -98,6 +98,7 @@ dependencies {
     implementation(libs.retrofit.moshi)
 
     implementation(libs.maplibre)
+    implementation(libs.maplibre.annotation)
 
     implementation(libs.playservices.location)
     implementation(libs.accompanist.permissions)
