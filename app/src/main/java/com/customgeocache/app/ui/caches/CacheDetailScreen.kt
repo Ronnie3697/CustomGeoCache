@@ -149,8 +149,32 @@ fun CacheDetailScreen(
                 item { ImagesRow(state.imageUrls) }
             }
 
-            if (state.logs.isNotEmpty()) {
-                item { SectionTitle("Logy (posledních ${state.logs.size})") }
+            // Logy zobrazujeme vždy — i prázdná sekce se status hláškou,
+            // ať uživatel vidí, že to appka aspoň zkusila.
+            item {
+                SectionTitle(
+                    if (state.logs.isNotEmpty()) "Logy (${state.logs.size})"
+                    else "Logy"
+                )
+            }
+            if (state.logs.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (state.refreshing)
+                                "Načítám logy…"
+                            else
+                                "Logy se zatím nepodařilo načíst. Klepni nahoře na refresh nebo zkontroluj přihlášení.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
                 items(state.logs, key = { it.id }) { log -> LogCard(log) }
             }
         }
@@ -254,7 +278,9 @@ private fun DescriptionCard(html: String) {
 }
 
 @Composable
-private fun HintCard(rotated: String) {
+private fun HintCard(plainText: String) {
+    // Server posílá hint plain text (decrypt=y v URL). UI default ukáže ROT13
+    // šifrovaný (jak je zvyk v geocachingu), klepnutí dešifruje na původní text.
     var revealed by remember { mutableStateOf(false) }
     Card(
         onClick = { revealed = !revealed },
@@ -270,7 +296,7 @@ private fun HintCard(rotated: String) {
             Spacer(Modifier.size(12.dp))
             Column {
                 Text(
-                    text = if (revealed) Rot13.decode(rotated) else rotated,
+                    text = if (revealed) plainText else Rot13.decode(plainText),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(Modifier.size(4.dp))

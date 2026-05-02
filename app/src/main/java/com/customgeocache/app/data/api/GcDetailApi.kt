@@ -39,8 +39,11 @@ class GcDetailApi(private val client: OkHttpClient) {
     suspend fun fetchFull(gccode: String, base: CacheEntity? = null): FullDetail =
         withContext(Dispatchers.IO) {
             Log.i(TAG, "fetchFull start: $gccode")
+            // ?decrypt=y vrátí čitelný hint (UI ho v HintCard zase zašifruje pro display).
+            // Bez decrypt=y stránka v některých případech neobsahuje JS userToken,
+            // bez kterého nelze stáhnout logbook. Verifikováno proti c:geo (GCParser.requestHtmlPage).
             val req = Request.Builder()
-                .url("https://www.geocaching.com/geocache/$gccode")
+                .url("https://www.geocaching.com/geocache/$gccode?decrypt=y")
                 .get()
                 .build()
             try {
@@ -92,8 +95,9 @@ class GcDetailApi(private val client: OkHttpClient) {
                         return@withContext emptyList()
                     }
                     val raw = resp.body?.string() ?: return@withContext emptyList()
+                    Log.i(TAG, "fetchLogs $gccode raw[${raw.length}B]: ${raw.take(200)}")
                     val logs = parseLogs(gccode, raw)
-                    Log.i(TAG, "fetchLogs $gccode -> ${logs.size} logs")
+                    Log.i(TAG, "fetchLogs $gccode -> ${logs.size} logs parsed")
                     logs
                 }
             } catch (t: Throwable) {
