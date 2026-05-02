@@ -2,7 +2,6 @@ package com.customgeocache.app.ui.map
 
 import android.os.Bundle
 import android.util.Log
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,36 +14,49 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.customgeocache.app.CustomGeoCacheApp
 import com.customgeocache.app.R
+import com.customgeocache.app.data.api.GcSearchApi
+import com.customgeocache.app.data.db.entities.CacheEntity
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
@@ -61,32 +73,36 @@ private const val TAG = "CGC.Map"
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun MapScreen(contentPadding: PaddingValues = PaddingValues(0.dp)) {
+fun MapScreen(
+    contentPadding: PaddingValues = PaddingValues(0.dp),
+    onOpenCache: (String) -> Unit = {},
+    onNavigateCompass: () -> Unit = {},
+    onLogCache: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val app = context.applicationContext as CustomGeoCacheApp
     val prefs = app.container.preferences
+    val repo = app.container.cacheRepository
+    val activeStore = app.container.activeCacheStore
     val scope = rememberCoroutineScope()
 
     val apiKey by prefs.mapyApiKey.collectAsStateWithLifecycle(initialValue = null)
     val layerId by prefs.mapLayer.collectAsStateWithLifecycle(initialValue = "basic")
     val layer = remember(layerId) { MapyLayer.fromId(layerId) }
+    val caches by repo.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
 
     var showLayerSheet by remember { mutableStateOf(false) }
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+    var styleRef by remember { mutableStateOf<Style?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var selectedCache by remember { mutableStateOf<CacheEntity?>(null) }
+    val snackbar = remember { SnackbarHostState() }
+
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
 
-    // Diagnostic events shown in the status overlay (top of screen)
-    val statusLog = remember { mutableStateListOf<String>() }
-    fun logStatus(msg: String) {
-        Log.i(TAG, msg)
-        if (statusLog.size > 8) statusLog.removeAt(0)
-        statusLog.add(msg)
-    }
-
-    LaunchedEffect(apiKey) {
-        logStatus(
-            if (apiKey.isNullOrBlank()) "API key: MISSING"
-            else "API key: ${apiKey!!.take(4)}…${apiKey!!.takeLast(4)} (${apiKey!!.length} chars)"
-        )
+    // Update markery vždy, když se cache list změní
+    LaunchedEffect(caches, styleRef) {
+        styleRef?.let { MapMarkers.update(it, caches) }
     }
 
     Box(
@@ -100,17 +116,29 @@ fun MapScreen(contentPadding: PaddingValues = PaddingValues(0.dp)) {
             MapLibreView(
                 apiKey = apiKey!!,
                 layer = layer,
-                onStatus = ::logStatus
+                onMapReady = { map, style ->
+                    mapRef = map
+                    styleRef = style
+                    MapMarkers.ensureLayers(style)
+                    MapMarkers.update(style, caches)
+                    map.addOnMapClickListener { latLng ->
+                        val pixel = map.projection.toScreenLocation(latLng)
+                        val features = map.queryRenderedFeatures(pixel, MapMarkers.LAYER_CIRCLE)
+                        val gc = features.firstNotNullOfOrNull {
+                            it.getStringProperty("gccode")
+                        }
+                        if (gc != null) {
+                            scope.launch {
+                                selectedCache = caches.firstOrNull { it.gccode == gc }
+                            }
+                        } else {
+                            selectedCache = null
+                        }
+                        true
+                    }
+                }
             )
         }
-
-        // Diagnostic status overlay (top-left)
-        StatusOverlay(
-            messages = statusLog,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(start = 12.dp, top = 12.dp)
-        )
 
         Column(
             modifier = Modifier
@@ -136,6 +164,49 @@ fun MapScreen(contentPadding: PaddingValues = PaddingValues(0.dp)) {
             }
         }
 
+        // Search-here FAB (extended) — uprostřed dole
+        ExtendedFloatingActionButton(
+            onClick = {
+                val map = mapRef ?: return@ExtendedFloatingActionButton
+                val bounds = map.projection.visibleRegion.latLngBounds
+                searching = true
+                scope.launch {
+                    val r = repo.searchInBounds(
+                        south = bounds.latitudeSouth,
+                        west = bounds.longitudeWest,
+                        north = bounds.latitudeNorth,
+                        east = bounds.longitudeEast
+                    )
+                    searching = false
+                    when (r) {
+                        is GcSearchApi.Result.Success ->
+                            snackbar.showSnackbar("Nahráno ${r.caches.size} kešek (z ${r.total})")
+                        is GcSearchApi.Result.NotAuthenticated ->
+                            snackbar.showSnackbar("Nejsi přihlášený na geocaching.com.")
+                        is GcSearchApi.Result.Error ->
+                            snackbar.showSnackbar("Chyba: ${r.message}")
+                    }
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 24.dp)
+        ) {
+            if (searching) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Icon(Icons.Default.Search, contentDescription = null)
+            }
+            Spacer(Modifier.size(8.dp))
+            Text(stringResource(R.string.map_search_here))
+        }
+
         if (showLayerSheet) {
             LayerPickerCard(
                 current = layer,
@@ -145,30 +216,39 @@ fun MapScreen(contentPadding: PaddingValues = PaddingValues(0.dp)) {
                 },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 80.dp, start = 16.dp, end = 16.dp)
+                    .padding(bottom = 96.dp, start = 16.dp, end = 16.dp)
             )
         }
-    }
-}
 
-@Composable
-private fun StatusOverlay(messages: List<String>, modifier: Modifier = Modifier) {
-    if (messages.isEmpty()) return
-    Card(
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xCC000000)),
-        modifier = modifier
-    ) {
-        Column(modifier = Modifier.padding(8.dp)) {
-            messages.forEach { msg ->
-                Text(
-                    text = msg,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+        // Cache preview bottom sheet
+        selectedCache?.let { cache ->
+            CachePreviewCard(
+                cache = cache,
+                onDismiss = { selectedCache = null },
+                onOpenDetail = {
+                    selectedCache = null
+                    onOpenCache(cache.gccode)
+                },
+                onNavigate = {
+                    activeStore.setActive(cache)
+                    selectedCache = null
+                    onNavigateCompass()
+                },
+                onLog = {
+                    activeStore.setActive(cache)
+                    selectedCache = null
+                    onLogCache(cache.gccode)
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
+            )
         }
+
+        SnackbarHost(
+            hostState = snackbar,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) { data -> Snackbar(snackbarData = data) }
     }
 }
 
@@ -192,13 +272,12 @@ private fun MissingApiKey() {
 private fun MapLibreView(
     apiKey: String,
     layer: MapyLayer,
-    onStatus: (String) -> Unit
+    onMapReady: (MapLibreMap, Style) -> Unit
 ) {
     val context = LocalContext.current
     val mapView = remember {
         MapLibre.getInstance(context)
         Logger.setVerbosity(Logger.VERBOSE)
-        onStatus("MapView init")
         MapView(context).apply { onCreate(Bundle()) }
     }
 
@@ -206,13 +285,7 @@ private fun MapLibreView(
         mapView.onStart()
         mapView.onResume()
         mapView.addOnDidFailLoadingMapListener { reason ->
-            onStatus("Map load FAIL: $reason")
-        }
-        mapView.addOnDidFinishLoadingStyleListener {
-            onStatus("Style loaded ✓")
-        }
-        mapView.addOnSourceChangedListener { sourceId ->
-            onStatus("Source changed: $sourceId")
+            Log.w(TAG, "Map load FAIL: $reason")
         }
         onDispose {
             mapView.onPause()
@@ -225,30 +298,19 @@ private fun MapLibreView(
         factory = { mapView },
         update = { view ->
             view.getMapAsync { map ->
-                onStatus("Map ready, applying style…")
-                applyStyleAndCamera(map, layer, apiKey, onStatus)
+                val styleJson = MapyStyles.rasterStyleJson(layer, apiKey)
+                map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+                    onMapReady(map, style)
+                }
+                if (map.cameraPosition.zoom < 1.0) {
+                    map.cameraPosition = CameraPosition.Builder()
+                        .target(LatLng(49.7437, 15.3386))
+                        .zoom(7.0)
+                        .build()
+                }
             }
         }
     )
-}
-
-private fun applyStyleAndCamera(
-    map: MapLibreMap,
-    layer: MapyLayer,
-    apiKey: String,
-    onStatus: (String) -> Unit
-) {
-    val styleJson = MapyStyles.rasterStyleJson(layer, apiKey)
-    onStatus("Style JSON ${styleJson.length} bytes, layer=${layer.id}")
-    map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-        onStatus("setStyle CB: sources=${style.sources.size} layers=${style.layers.size}")
-    }
-    if (map.cameraPosition.zoom < 1.0) {
-        map.cameraPosition = CameraPosition.Builder()
-            .target(LatLng(49.7437, 15.3386))
-            .zoom(7.0)
-            .build()
-    }
 }
 
 @Composable
@@ -272,6 +334,59 @@ private fun LayerPickerCard(
                     onClick = { onPick(l) },
                     label = { Text(l.displayName) }
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CachePreviewCard(
+    cache: CacheEntity,
+    onDismiss: () -> Unit,
+    onOpenDetail: () -> Unit,
+    onNavigate: () -> Unit,
+    onLog: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(cache.gccode, style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary)
+                    Text(cache.name, style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold, maxLines = 2)
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = null)
+                }
+            }
+            Spacer(Modifier.size(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                AssistChip(onClick = {}, label = { Text(cache.type) })
+                AssistChip(onClick = {}, label = { Text("D ${cache.difficulty}") })
+                AssistChip(onClick = {}, label = { Text("T ${cache.terrain}") })
+                AssistChip(onClick = {}, label = { Text(cache.size) })
+            }
+            Spacer(Modifier.size(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onOpenDetail, modifier = Modifier.weight(1f)) {
+                    Text("Detail")
+                }
+                OutlinedButton(onClick = onNavigate, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Navigation, contentDescription = null)
+                    Spacer(Modifier.size(4.dp))
+                    Text("Naviguj")
+                }
+                OutlinedButton(onClick = onLog, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.size(4.dp))
+                    Text("Log")
+                }
             }
         }
     }

@@ -18,7 +18,7 @@ class MainActivity : ComponentActivity() {
 
         val prefs = (application as CustomGeoCacheApp).container.preferences
         // Jednorázový blokující snapshot — vyhne se UI flickeru mezi setup ↔ main.
-        val startDestination = if (prefs.firstRunDoneBlocking()) Routes.MAIN else Routes.SETUP
+        val startDestination = if (prefs.firstRunDoneBlocking()) Routes.home() else Routes.SETUP
 
         setContent {
             CustomGeoCacheTheme {

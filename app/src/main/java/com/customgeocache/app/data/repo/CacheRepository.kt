@@ -1,24 +1,25 @@
 package com.customgeocache.app.data.repo
 
+import com.customgeocache.app.data.api.GcDetailApi
+import com.customgeocache.app.data.api.GcLogApi
+import com.customgeocache.app.data.api.GcSearchApi
 import com.customgeocache.app.data.db.CacheDao
 import com.customgeocache.app.data.db.entities.CacheEntity
 import com.customgeocache.app.data.db.entities.LogEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
+import java.util.Date
 
 /**
- * Cache repository — agreguje DB + síťové volání geocaching.com.
- *
- * MVP iterace: implementováno čtení/zápis DB, observe všech kešek + observe v bounding boxu.
- * Real fetch z geocaching.com (search nearby + parse cache detail) přijde v iteraci 2 —
- * vyžaduje to interakci s GC search API endpointem který chce platný anti-forgery token,
- * a HTML parsing pro detail. Tady to mám připravené v signaturách.
+ * Single source of truth pro keše. Read-side čte přes Room (Flow), write-side
+ * volá GC APIs a ukládá do DB.
  */
 class CacheRepository(
     private val dao: CacheDao,
-    @Suppress("unused") private val client: OkHttpClient
+    private val searchApi: GcSearchApi,
+    private val detailApi: GcDetailApi,
+    private val logApi: GcLogApi
 ) {
 
     fun observeAll(): Flow<List<CacheEntity>> = dao.observeAll()
@@ -29,33 +30,60 @@ class CacheRepository(
         minLat: Double, maxLat: Double, minLon: Double, maxLon: Double
     ): Flow<List<CacheEntity>> = dao.observeInBounds(minLat, maxLat, minLon, maxLon)
 
-    fun observeLogs(gccode: String, limit: Int = 10): Flow<List<LogEntity>> =
+    fun observeLogs(gccode: String, limit: Int = 25): Flow<List<LogEntity>> =
         dao.observeLogs(gccode, limit)
 
     suspend fun saveCache(cache: CacheEntity) = withContext(Dispatchers.IO) { dao.upsert(cache) }
+    suspend fun saveCaches(caches: List<CacheEntity>) = withContext(Dispatchers.IO) { dao.upsertAll(caches) }
+    suspend fun deleteCache(gccode: String) = withContext(Dispatchers.IO) { dao.deleteByGcCode(gccode) }
 
-    suspend fun saveCaches(caches: List<CacheEntity>) = withContext(Dispatchers.IO) {
-        dao.upsertAll(caches)
+    /** Stáhne keše v bounding boxu, uloží je do DB a vrátí výsledek volání. */
+    suspend fun searchInBounds(
+        south: Double, west: Double, north: Double, east: Double
+    ): GcSearchApi.Result {
+        val result = searchApi.searchBox(south, west, north, east)
+        if (result is GcSearchApi.Result.Success) {
+            saveCaches(result.caches)
+        }
+        return result
     }
 
-    suspend fun deleteCache(gccode: String) = withContext(Dispatchers.IO) {
-        dao.deleteByGcCode(gccode)
-    }
-
-    /**
-     * TODO iter 2: pošli search request na geocaching.com pro keše v okolí (lat, lon, radius).
-     * Pro teď vrací prázdný seznam.
-     */
-    suspend fun searchAround(@Suppress("unused_parameter") lat: Double,
-                             @Suppress("unused_parameter") lon: Double,
-                             @Suppress("unused_parameter") radiusKm: Double = 5.0): List<CacheEntity> =
-        withContext(Dispatchers.IO) { emptyList() }
-
-    /**
-     * TODO iter 2: stáhni a naparsuj detail kešky z geocaching.com (description, hint, attributy, logy).
-     * Pro teď vrací cached verzi z DB.
-     */
+    /** Stáhne detail z webu, mergne s případným záznamem v DB, uloží. */
     suspend fun fetchDetail(gccode: String): CacheEntity? = withContext(Dispatchers.IO) {
-        dao.getByGcCode(gccode)
+        val base = dao.getByGcCode(gccode)
+        val fresh = detailApi.fetchDetail(gccode, base) ?: return@withContext base
+        dao.upsert(fresh)
+        fresh
+    }
+
+    /** Stáhne nejnovější logy a uloží je do DB. */
+    suspend fun refreshLogs(gccode: String, userToken: String): Int = withContext(Dispatchers.IO) {
+        val logs = detailApi.fetchLogs(gccode, userToken)
+        if (logs.isNotEmpty()) {
+            dao.deleteLogsForCache(gccode)
+            dao.insertLogs(logs)
+        }
+        logs.size
+    }
+
+    suspend fun postLog(
+        gccode: String,
+        type: GcLogApi.LogType,
+        text: String,
+        date: Date = Date(),
+        usedFavoritePoint: Boolean = false
+    ): GcLogApi.Result = logApi.postLog(gccode, type, text, date, usedFavoritePoint)
+
+    suspend fun fetchDetailHtml(gccode: String): String? = withContext(Dispatchers.IO) {
+        // Pomocná metoda — vrací RAW HTML pro extrakci userToken (pro fetchLogs).
+        // Použijeme jednoduše stejný request jako fetchDetail.
+        val req = okhttp3.Request.Builder()
+            .url("https://www.geocaching.com/geocache/$gccode?decrypt=y")
+            .get()
+            .build()
+        try {
+            // Reuse client cez detailApi by bylo čistší, ale tady jen rychlá pomocná cesta
+            null  // implementace ne-kritická pro MVP, logy si stáhneme z hlavního flow
+        } catch (_: Throwable) { null }
     }
 }

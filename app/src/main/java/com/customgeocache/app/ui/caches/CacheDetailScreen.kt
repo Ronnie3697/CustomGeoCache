@@ -1,92 +1,308 @@
 package com.customgeocache.app.ui.caches
 
+import android.content.Intent
+import android.net.Uri
+import android.text.Html
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Navigation
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.customgeocache.app.CustomGeoCacheApp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.customgeocache.app.data.db.entities.CacheEntity
+import com.customgeocache.app.data.db.entities.LogEntity
+import com.customgeocache.app.util.Rot13
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CacheDetailScreen(gccode: String, onBack: () -> Unit) {
+fun CacheDetailScreen(
+    gccode: String,
+    onBack: () -> Unit,
+    onNavigateToCompass: () -> Unit = {},
+    onLog: () -> Unit = {}
+) {
+    val vm: CacheDetailViewModel = viewModel(factory = CacheDetailViewModel.factory(gccode))
+    val state by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val app = context.applicationContext as CustomGeoCacheApp
-    val cache by app.container.cacheRepository.observeByGcCode(gccode)
-        .collectAsStateWithLifecycle(initialValue = null)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(cache?.name ?: gccode) },
+                title = { Text(state.cache?.name ?: gccode, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                    }
+                },
+                actions = {
+                    IconButton(onClick = vm::refresh, enabled = !state.refreshing) {
+                        if (state.refreshing) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = null)
+                        }
+                    }
+                    IconButton(onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://www.geocaching.com/geocache/$gccode"))
+                        context.startActivity(intent)
+                    }) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null)
                     }
                 }
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
+        val cache = state.cache
+        if (cache == null) {
+            EmptyOrLoading(state.refreshing, padding)
+            return@Scaffold
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                top = padding.calculateTopPadding() + 8.dp,
+                bottom = padding.calculateBottomPadding() + 24.dp,
+                start = 16.dp, end = 16.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val c = cache
-            if (c == null) {
-                Text(text = "Tato keš ($gccode) ještě není stažená. Detail z geocaching.com je TODO v iter 2.",
-                    style = MaterialTheme.typography.bodyMedium)
-                return@Column
+            item { HeaderCard(cache, onNavigateToCompass = {
+                vm.navigate()
+                onNavigateToCompass()
+            }, onLog = {
+                vm.navigate()
+                onLog()
+            }) }
+
+            if (!cache.description.isNullOrBlank()) {
+                item { SectionTitle("Popis") }
+                item { DescriptionCard(cache.description) }
             }
-            Row {
-                MetaBlock(label = "D", value = c.difficulty.toString())
-                Spacer(Modifier.size(16.dp))
-                MetaBlock(label = "T", value = c.terrain.toString())
-                Spacer(Modifier.size(16.dp))
-                MetaBlock(label = "Velikost", value = c.size)
-                Spacer(Modifier.size(16.dp))
-                MetaBlock(label = "Typ", value = c.type)
+
+            if (!cache.hint.isNullOrBlank()) {
+                item { SectionTitle("Hint") }
+                item { HintCard(cache.hint) }
             }
-            Spacer(Modifier.size(16.dp))
-            if (!c.description.isNullOrBlank()) {
-                Text("Popis", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.size(4.dp))
-                Text(c.description, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.size(16.dp))
+
+            if (!cache.attributes.isNullOrBlank()) {
+                item { SectionTitle("Atributy") }
+                item { AttributesRow(cache.attributes) }
             }
-            if (!c.hint.isNullOrBlank()) {
-                Text("Hint", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.size(4.dp))
-                Text(c.hint, style = MaterialTheme.typography.bodyMedium)
+
+            if (state.logs.isNotEmpty()) {
+                item { SectionTitle("Logy (posledních ${state.logs.size})") }
+                items(state.logs, key = { it.id }) { log -> LogCard(log) }
             }
         }
     }
 }
 
 @Composable
-private fun MetaBlock(label: String, value: String) {
-    Column {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(value, style = MaterialTheme.typography.titleMedium)
+private fun EmptyOrLoading(refreshing: Boolean, padding: PaddingValues) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(padding),
+        contentAlignment = Alignment.Center
+    ) {
+        if (refreshing) CircularProgressIndicator()
+        else Text("Načítám detail keše…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun HeaderCard(cache: CacheEntity, onNavigateToCompass: () -> Unit, onLog: () -> Unit) {
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(cache.gccode, style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Spacer(Modifier.weight(1f))
+                Text(cache.type, style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
+            Spacer(Modifier.size(4.dp))
+            Text(cache.name, style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer)
+            cache.owner?.let {
+                Spacer(Modifier.size(4.dp))
+                Text("by $it", style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
+            }
+
+            Spacer(Modifier.size(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = {}, label = { Text("D ${cache.difficulty}") })
+                AssistChip(onClick = {}, label = { Text("T ${cache.terrain}") })
+                AssistChip(onClick = {}, label = { Text(cache.size) })
+            }
+
+            Spacer(Modifier.size(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onNavigateToCompass,
+                    modifier = Modifier.weight(1f).height(48.dp)
+                ) {
+                    Icon(Icons.Default.Navigation, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Naviguj")
+                }
+                OutlinedButton(
+                    onClick = onLog,
+                    modifier = Modifier.weight(1f).height(48.dp)
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text("Logovat")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(top = 8.dp)
+    )
+}
+
+@Composable
+private fun DescriptionCard(html: String) {
+    val plain = remember(html) {
+        @Suppress("DEPRECATION")
+        Html.fromHtml(html, Html.FROM_HTML_MODE_COMPACT).toString().trim()
+    }
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = plain,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun HintCard(rotated: String) {
+    var revealed by remember { mutableStateOf(false) }
+    Card(
+        onClick = { revealed = !revealed },
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Lightbulb, contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary)
+            Spacer(Modifier.size(12.dp))
+            Column {
+                Text(
+                    text = if (revealed) Rot13.decode(rotated) else rotated,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(Modifier.size(4.dp))
+                Text(
+                    text = if (revealed) "Klepni pro skrytí" else "Klepni pro odhalení (ROT13)",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttributesRow(csv: String) {
+    val list = csv.split(",").filter { it.isNotBlank() }
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        list.forEach { attr ->
+            AssistChip(onClick = {}, label = { Text(attr) })
+        }
+    }
+}
+
+@Composable
+private fun LogCard(log: LogEntity) {
+    val dateFmt = remember { SimpleDateFormat("d. M. yyyy", Locale.getDefault()) }
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(log.author, style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium)
+                Spacer(Modifier.weight(1f))
+                Text(dateFmt.format(Date(log.dateMillis)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(log.type, style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.size(6.dp))
+            Text(log.text, style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }

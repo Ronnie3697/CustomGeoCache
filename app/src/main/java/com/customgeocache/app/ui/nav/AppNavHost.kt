@@ -7,16 +7,22 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navigation
 import com.customgeocache.app.ui.caches.CacheDetailScreen
 import com.customgeocache.app.ui.home.HomeScreen
+import com.customgeocache.app.ui.home.HomeTab
+import com.customgeocache.app.ui.log.LogEntryScreen
 import com.customgeocache.app.ui.settings.SettingsScreen
 import com.customgeocache.app.ui.setup.SetupWizardScreen
 
 object Routes {
     const val SETUP = "setup"
     const val MAIN = "main"
-    const val HOME = "home"
+    const val HOME = "home/{tab}"
     const val SETTINGS = "settings"
     const val CACHE_DETAIL = "cache/{gccode}"
+    const val LOG_ENTRY = "log/{gccode}"
+
+    fun home(tab: HomeTab = HomeTab.MAP) = "home/${tab.name}"
     fun cacheDetail(gccode: String) = "cache/$gccode"
+    fun logEntry(gccode: String) = "log/$gccode"
 }
 
 @Composable
@@ -34,11 +40,15 @@ fun AppNavHost(startDestination: String) {
             )
         }
 
-        navigation(startDestination = Routes.HOME, route = Routes.MAIN) {
-            composable(Routes.HOME) {
+        navigation(startDestination = Routes.home(HomeTab.MAP), route = Routes.MAIN) {
+            composable(Routes.HOME) { backStack ->
+                val tabName = backStack.arguments?.getString("tab") ?: HomeTab.MAP.name
+                val tab = runCatching { HomeTab.valueOf(tabName) }.getOrDefault(HomeTab.MAP)
                 HomeScreen(
+                    initialTab = tab,
                     onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                    onOpenCache = { gccode -> nav.navigate(Routes.cacheDetail(gccode)) }
+                    onOpenCache = { gccode -> nav.navigate(Routes.cacheDetail(gccode)) },
+                    onOpenLog = { gccode -> nav.navigate(Routes.logEntry(gccode)) }
                 )
             }
             composable(Routes.SETTINGS) {
@@ -46,7 +56,24 @@ fun AppNavHost(startDestination: String) {
             }
             composable(Routes.CACHE_DETAIL) { backStack ->
                 val gccode = backStack.arguments?.getString("gccode").orEmpty()
-                CacheDetailScreen(gccode = gccode, onBack = { nav.popBackStack() })
+                CacheDetailScreen(
+                    gccode = gccode,
+                    onBack = { nav.popBackStack() },
+                    onNavigateToCompass = {
+                        nav.navigate(Routes.home(HomeTab.COMPASS)) {
+                            popUpTo(Routes.HOME) { inclusive = true }
+                        }
+                    },
+                    onLog = { nav.navigate(Routes.logEntry(gccode)) }
+                )
+            }
+            composable(Routes.LOG_ENTRY) { backStack ->
+                val gccode = backStack.arguments?.getString("gccode").orEmpty()
+                LogEntryScreen(
+                    gccode = gccode,
+                    onBack = { nav.popBackStack() },
+                    onSubmitted = { nav.popBackStack() }
+                )
             }
         }
     }

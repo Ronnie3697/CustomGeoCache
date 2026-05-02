@@ -1,6 +1,7 @@
 package com.customgeocache.app.ui.home
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Inventory2
@@ -16,23 +17,25 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.customgeocache.app.R
 import com.customgeocache.app.ui.caches.CacheListScreen
+import com.customgeocache.app.ui.compass.CompassScreen
 import com.customgeocache.app.ui.map.MapScreen
 
-private enum class HomeTab { MAP, CACHES }
+enum class HomeTab { MAP, CACHES, COMPASS }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
+    initialTab: HomeTab = HomeTab.MAP,
     onOpenSettings: () -> Unit,
-    onOpenCache: (String) -> Unit
+    onOpenCache: (String) -> Unit,
+    onOpenLog: (String) -> Unit
 ) {
-    var tab by rememberSaveable { mutableStateOf(HomeTab.MAP) }
+    var tab by rememberSaveable { mutableStateOf(initialTab) }
 
     Scaffold(
         topBar = {
@@ -42,6 +45,7 @@ fun HomeScreen(
                         when (tab) {
                             HomeTab.MAP -> stringResource(R.string.nav_map)
                             HomeTab.CACHES -> stringResource(R.string.nav_caches)
+                            HomeTab.COMPASS -> "Kompas"
                         }
                     )
                 },
@@ -67,15 +71,27 @@ fun HomeScreen(
                     icon = { Icon(Icons.Outlined.Inventory2, contentDescription = null) },
                     label = { Text(stringResource(R.string.nav_caches)) }
                 )
+                NavigationBarItem(
+                    selected = tab == HomeTab.COMPASS,
+                    onClick = { tab = HomeTab.COMPASS },
+                    icon = { Icon(Icons.Default.Explore, contentDescription = null) },
+                    label = { Text("Kompas") }
+                )
             }
         }
     ) { padding ->
         when (tab) {
-            HomeTab.MAP -> MapScreen(contentPadding = padding)
+            HomeTab.MAP -> MapScreen(
+                contentPadding = padding,
+                onOpenCache = onOpenCache,
+                onNavigateCompass = { tab = HomeTab.COMPASS },
+                onLogCache = onOpenLog
+            )
             HomeTab.CACHES -> CacheListScreen(
                 contentPadding = padding,
                 onOpenCache = onOpenCache
             )
+            HomeTab.COMPASS -> CompassScreen(contentPadding = padding)
         }
     }
 }
