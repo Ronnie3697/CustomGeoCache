@@ -160,8 +160,8 @@ private fun MapLibreView(apiKey: String, layer: MapyLayer) {
 }
 
 private fun applyStyleAndCamera(map: MapLibreMap, layer: MapyLayer, apiKey: String) {
-    val styleUrl = MapyStyles.styleUrl(layer, apiKey)
-    map.setStyle(Style.Builder().fromUri(styleUrl))
+    val styleJson = MapyStyles.rasterStyleJson(layer, apiKey)
+    map.setStyle(Style.Builder().fromJson(styleJson)) { /* loaded */ }
     if (map.cameraPosition.zoom < 1.0) {
         map.cameraPosition = CameraPosition.Builder()
             .target(LatLng(49.7437, 15.3386))
