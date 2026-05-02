@@ -21,8 +21,8 @@ android {
         applicationId = "com.customgeocache.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
 
         buildConfigField("String", "MAPY_CZ_API_KEY_DEFAULT", "\"$mapyCzApiKey\"")
     }
@@ -56,6 +56,11 @@ android {
     packaging {
         resources {
             excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/DEPENDENCIES")
+        }
+        // 16 KB page-size kompatibilita (Android 15+ na nových zařízeních).
+        // Native libs musí být uncompressed v APK + page-aligned uvnitř.
+        jniLibs {
+            useLegacyPackaging = false
         }
     }
 }
