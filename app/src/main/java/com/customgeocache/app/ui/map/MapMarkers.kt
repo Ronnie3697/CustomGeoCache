@@ -8,6 +8,7 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.expressions.Expression
 import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
@@ -15,10 +16,13 @@ import org.maplibre.android.style.sources.GeoJsonSource
 private const val TAG = "CGC.Markers"
 
 /**
- * Helper na markery kešek na MapLibre mapě. Používáme GeoJSON source + Circle layer
- * (jednoduché barevné kruhy s gccode jako label nad nimi).
+ * Helper na markery kešek na MapLibre mapě. Používáme GeoJSON source + jednoduchý
+ * Circle layer + Symbol layer (text uvnitř kruhu).
  *
- * IDs jsou stable, ať můžeme update znovu volat bez recreate.
+ * Po několika iteracích jsem se rozhodl pro **konstantní barvu kruhu** místo
+ * Expression.match podle typu — některé verze MapLibre tichy ignorují špatně
+ * vytvořené expression a layer pak nemaluje nic. Barvu podle typu řešíme přes
+ * `typeShort` text uvnitř kruhu (T/M/?/E/Ev/V/W).
  */
 object MapMarkers {
 
@@ -32,32 +36,23 @@ object MapMarkers {
             style.addSource(GeoJsonSource(SOURCE_ID, "{\"type\":\"FeatureCollection\",\"features\":[]}"))
             Log.i(TAG, "ensureLayers: source $SOURCE_ID created")
         } else if (existing !is GeoJsonSource) {
-            // Defenzivní: kdyby tam někdo nahodil jiný typ, smažeme a znovu založíme
             style.removeSource(SOURCE_ID)
             style.addSource(GeoJsonSource(SOURCE_ID, "{\"type\":\"FeatureCollection\",\"features\":[]}"))
             Log.w(TAG, "ensureLayers: replaced non-GeoJson source")
         }
+
         if (style.getLayer(LAYER_CIRCLE) == null) {
             val circle = CircleLayer(LAYER_CIRCLE, SOURCE_ID).withProperties(
-                PropertyFactory.circleRadius(13f),
-                PropertyFactory.circleColor(
-                    Expression.match(
-                        Expression.get("typeShort"),
-                        Expression.literal("#6E6E6E"),
-                        Expression.stop("T", "#2E7D32"),
-                        Expression.stop("M", "#FF8F00"),
-                        Expression.stop("?", "#5E35B1"),
-                        Expression.stop("E", "#5D4037"),
-                        Expression.stop("Ev", "#D32F2F"),
-                        Expression.stop("V", "#6D4C41"),
-                        Expression.stop("W", "#1976D2")
-                    )
-                ),
+                PropertyFactory.circleRadius(14f),
+                PropertyFactory.circleColor("#1B5E20"),         // konstantní zelená
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
                 PropertyFactory.circleStrokeWidth(3f),
-                PropertyFactory.circleOpacity(0.95f)
+                PropertyFactory.circleOpacity(1.0f),
+                PropertyFactory.visibility(Property.VISIBLE)
             )
+            // addLayer dá vrstvu na vrchol stacku — nad raster tiles. Explicitní pojistka.
             style.addLayer(circle)
+            Log.i(TAG, "ensureLayers: circle layer added; total layers=${style.layers.size}")
         }
         if (style.getLayer(LAYER_LABEL) == null) {
             val label = SymbolLayer(LAYER_LABEL, SOURCE_ID).withProperties(
@@ -67,16 +62,15 @@ object MapMarkers {
                 PropertyFactory.textAllowOverlap(true),
                 PropertyFactory.textIgnorePlacement(true),
                 PropertyFactory.textHaloColor("#000000"),
-                PropertyFactory.textHaloWidth(0.5f)
+                PropertyFactory.textHaloWidth(0.6f),
+                PropertyFactory.visibility(Property.VISIBLE)
             )
             style.addLayer(label)
+            Log.i(TAG, "ensureLayers: label layer added")
         }
     }
 
     fun update(style: Style, caches: List<CacheEntity>) {
-        // Idempotent — safe to call even if layers already exist. Tohle je důležité,
-        // protože update se volá jak z onMapReady, tak z LaunchedEffect (na změnu cache list);
-        // bez tohoto by race condition mezi nimi mohla skipnout markery.
         ensureLayers(style)
         val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID)
         if (source == null) {
@@ -84,7 +78,10 @@ object MapMarkers {
             return
         }
         val features = JSONArray()
+        var skipped = 0
         for (c in caches) {
+            // Zahodíme zjevně nesmyslné lokace (premium-only keše bez souřadnic).
+            if (c.lat == 0.0 && c.lon == 0.0) { skipped++; continue }
             features.put(
                 JSONObject().apply {
                     put("type", "Feature")
@@ -107,7 +104,7 @@ object MapMarkers {
             put("features", features)
         }
         source.setGeoJson(fc.toString())
-        Log.i(TAG, "update: ${caches.size} features pushed to source $SOURCE_ID; layers=${style.layers.size}")
+        Log.i(TAG, "update: features=${features.length()} (skipped=$skipped) layers=${style.layers.size} circleVisible=${style.getLayer(LAYER_CIRCLE)?.visibility?.value}")
     }
 
     private fun typeShort(type: String): String = when {
@@ -122,13 +119,11 @@ object MapMarkers {
     }
 
     fun bboxOfVisible(centerLat: Double, centerLon: Double, radiusKm: Double): DoubleArray {
-        // Hrubý bbox ze středu + poloměr v km. Vrací [south, west, north, east]
         val dLat = radiusKm / 111.0
         val dLon = radiusKm / (111.0 * Math.cos(Math.toRadians(centerLat)))
         return doubleArrayOf(centerLat - dLat, centerLon - dLon, centerLat + dLat, centerLon + dLon)
     }
 
-    /** Bounding box pole projektovaných hranic mapy. */
     fun bboxOfBounds(southWest: LatLng, northEast: LatLng): DoubleArray =
         doubleArrayOf(southWest.latitude, southWest.longitude, northEast.latitude, northEast.longitude)
 }
