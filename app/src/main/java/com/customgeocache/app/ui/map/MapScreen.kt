@@ -346,6 +346,9 @@ private fun MapLibreView(
     onMapReady: (MapView, MapLibreMap, Style) -> Unit
 ) {
     val context = LocalContext.current
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+    var initialCameraSet by remember { mutableStateOf(false) }
+
     val mapView = remember {
         MapLibre.getInstance(context)
         Logger.setVerbosity(Logger.VERBOSE)
@@ -358,6 +361,7 @@ private fun MapLibreView(
         mapView.addOnDidFailLoadingMapListener { reason ->
             Log.w(TAG, "Map load FAIL: $reason")
         }
+        mapView.getMapAsync { mapRef = it }
         onDispose {
             mapView.onPause()
             mapView.onStop()
@@ -365,14 +369,14 @@ private fun MapLibreView(
         }
     }
 
-    AndroidView(
-        factory = { mapView },
-        update = { view ->
-            view.getMapAsync { map ->
-                val styleJson = MapStyles.rasterStyleJson(layer, apiKey)
-                map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
-                    onMapReady(view, map, style)
-                }
+    // Style se reload-uje POUZE když uživatel změní vrstvu nebo se objeví/změní API klíč,
+    // nikoli na každý recompose (např. když se změní list keší). Camera se nastaví jednou
+    // při prvním style load a uživateli pak zůstává.
+    LaunchedEffect(mapRef, layer, apiKey) {
+        val map = mapRef ?: return@LaunchedEffect
+        val styleJson = MapStyles.rasterStyleJson(layer, apiKey)
+        map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
+            if (!initialCameraSet) {
                 val target = if (savedCamera != null) {
                     CameraPosition.Builder()
                         .target(LatLng(savedCamera.lat, savedCamera.lon))
@@ -387,8 +391,15 @@ private fun MapLibreView(
                         .build()
                 }
                 map.cameraPosition = target
+                initialCameraSet = true
             }
+            onMapReady(mapView, map, style)
         }
+    }
+
+    AndroidView(
+        factory = { mapView },
+        update = { /* no-op — vše řeší LaunchedEffect výše */ }
     )
 }
 
