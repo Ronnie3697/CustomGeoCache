@@ -1,5 +1,6 @@
 package com.customgeocache.app.ui.map
 
+import android.util.Log
 import com.customgeocache.app.data.db.entities.CacheEntity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -10,6 +11,8 @@ import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.PropertyFactory
 import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
+
+private const val TAG = "CGC.Markers"
 
 /**
  * Helper na markery kešek na MapLibre mapě. Používáme GeoJSON source + Circle layer
@@ -24,8 +27,15 @@ object MapMarkers {
     const val LAYER_LABEL = "caches-label"
 
     fun ensureLayers(style: Style) {
-        if (style.getSource(SOURCE_ID) == null) {
+        val existing = style.getSource(SOURCE_ID)
+        if (existing == null) {
             style.addSource(GeoJsonSource(SOURCE_ID, "{\"type\":\"FeatureCollection\",\"features\":[]}"))
+            Log.i(TAG, "ensureLayers: source $SOURCE_ID created")
+        } else if (existing !is GeoJsonSource) {
+            // Defenzivní: kdyby tam někdo nahodil jiný typ, smažeme a znovu založíme
+            style.removeSource(SOURCE_ID)
+            style.addSource(GeoJsonSource(SOURCE_ID, "{\"type\":\"FeatureCollection\",\"features\":[]}"))
+            Log.w(TAG, "ensureLayers: replaced non-GeoJson source")
         }
         if (style.getLayer(LAYER_CIRCLE) == null) {
             val circle = CircleLayer(LAYER_CIRCLE, SOURCE_ID).withProperties(
@@ -64,7 +74,15 @@ object MapMarkers {
     }
 
     fun update(style: Style, caches: List<CacheEntity>) {
-        val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID) ?: return
+        // Idempotent — safe to call even if layers already exist. Tohle je důležité,
+        // protože update se volá jak z onMapReady, tak z LaunchedEffect (na změnu cache list);
+        // bez tohoto by race condition mezi nimi mohla skipnout markery.
+        ensureLayers(style)
+        val source = style.getSourceAs<GeoJsonSource>(SOURCE_ID)
+        if (source == null) {
+            Log.w(TAG, "update: source still null after ensureLayers — style not loaded?")
+            return
+        }
         val features = JSONArray()
         for (c in caches) {
             features.put(
@@ -89,6 +107,7 @@ object MapMarkers {
             put("features", features)
         }
         source.setGeoJson(fc.toString())
+        Log.i(TAG, "update: ${caches.size} features pushed to source $SOURCE_ID; layers=${style.layers.size}")
     }
 
     private fun typeShort(type: String): String = when {

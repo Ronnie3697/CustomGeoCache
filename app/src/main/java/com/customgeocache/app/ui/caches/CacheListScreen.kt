@@ -1,6 +1,5 @@
 package com.customgeocache.app.ui.caches
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -23,15 +23,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.customgeocache.app.CustomGeoCacheApp
 import com.customgeocache.app.R
 import com.customgeocache.app.data.db.entities.CacheEntity
+import com.customgeocache.app.util.GeoUtils
 
 @Composable
 fun CacheListScreen(
@@ -40,10 +43,22 @@ fun CacheListScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as CustomGeoCacheApp
+    val activeStore = app.container.activeCacheStore
     val caches by app.container.cacheRepository.observeAll()
         .collectAsStateWithLifecycle(initialValue = emptyList())
 
-    if (caches.isEmpty()) {
+    // Reference bod pro výpočet vzdálenosti — poslední pozice mapy.
+    // Pokud nemáme, vzdálenost prostě nezobrazíme.
+    val center = activeStore.mapCamera
+
+    val sorted = remember(caches, center) {
+        if (center == null) caches
+        else caches.sortedBy {
+            GeoUtils.distanceMeters(center.lat, center.lon, it.lat, it.lon)
+        }
+    }
+
+    if (sorted.isEmpty()) {
         EmptyState(contentPadding)
     } else {
         LazyColumn(
@@ -56,15 +71,26 @@ fun CacheListScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(caches, key = { it.gccode }) { cache ->
-                CacheCard(cache = cache, onClick = { onOpenCache(cache.gccode) })
+            items(sorted, key = { it.gccode }) { cache ->
+                val distance = center?.let {
+                    GeoUtils.distanceMeters(it.lat, it.lon, cache.lat, cache.lon)
+                }
+                CacheCard(
+                    cache = cache,
+                    distanceText = distance?.let(GeoUtils::formatDistance),
+                    onClick = { onOpenCache(cache.gccode) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun CacheCard(cache: CacheEntity, onClick: () -> Unit) {
+private fun CacheCard(
+    cache: CacheEntity,
+    distanceText: String?,
+    onClick: () -> Unit
+) {
     Card(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
@@ -73,40 +99,57 @@ private fun CacheCard(cache: CacheEntity, onClick: () -> Unit) {
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = cache.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = cache.gccode,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            Row(verticalAlignment = Alignment.Top) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = cache.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2
+                    )
+                    Text(
+                        text = cache.gccode,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (distanceText != null) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Place,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.size(2.dp))
+                            Text(
+                                text = distanceText,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
-            Spacer(Modifier.size(6.dp))
-            Row {
-                MetaChip("D ${cache.difficulty}")
-                Spacer(Modifier.size(8.dp))
-                MetaChip("T ${cache.terrain}")
-                Spacer(Modifier.size(8.dp))
-                MetaChip(cache.size)
-                Spacer(Modifier.size(8.dp))
-                MetaChip(cache.type)
+            Spacer(Modifier.size(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                MetaText("D ${cache.difficulty}")
+                MetaText("T ${cache.terrain}")
+                MetaText(cache.size)
+                MetaText(cache.type)
             }
         }
     }
 }
 
 @Composable
-private fun MetaChip(text: String) {
+private fun MetaText(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier
-            .padding(end = 0.dp)
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
 
