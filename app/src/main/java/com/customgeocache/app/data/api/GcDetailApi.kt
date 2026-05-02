@@ -24,26 +24,46 @@ class GcDetailApi(private val client: OkHttpClient) {
 
     private val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
 
-    suspend fun fetchDetail(gccode: String, base: CacheEntity? = null): CacheEntity? =
+    /**
+     * Stáhne detail page + parse cache + extract userToken pro logbook + extract image URLs.
+     *
+     * URL **bez `decrypt=y`** parametru — server vrací hint v ROT13 (uživatel ho odhalí
+     * klepnutím v UI). Decrypt=y by hint poslal čitelný a UI logika by ho zase šifrovala.
+     */
+    data class FullDetail(
+        val cache: CacheEntity?,
+        val userToken: String?,
+        val imageUrls: List<String>
+    )
+
+    suspend fun fetchFull(gccode: String, base: CacheEntity? = null): FullDetail =
         withContext(Dispatchers.IO) {
             val req = Request.Builder()
-                .url("https://www.geocaching.com/geocache/$gccode?decrypt=y")
+                .url("https://www.geocaching.com/geocache/$gccode")
                 .get()
                 .build()
             try {
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) {
-                        Log.w(TAG, "fetchDetail $gccode HTTP ${resp.code}")
-                        return@withContext null
+                        Log.w(TAG, "fetchFull $gccode HTTP ${resp.code}")
+                        return@withContext FullDetail(null, null, emptyList())
                     }
-                    val html = resp.body?.string() ?: return@withContext null
-                    GcDetailParser.parse(gccode, html, base)
+                    val html = resp.body?.string()
+                        ?: return@withContext FullDetail(null, null, emptyList())
+                    FullDetail(
+                        cache = GcDetailParser.parse(gccode, html, base),
+                        userToken = extractUserToken(html),
+                        imageUrls = GcDetailParser.extractImages(html)
+                    )
                 }
             } catch (t: Throwable) {
-                Log.w(TAG, "fetchDetail failed", t)
-                null
+                Log.w(TAG, "fetchFull failed", t)
+                FullDetail(null, null, emptyList())
             }
         }
+
+    suspend fun fetchDetail(gccode: String, base: CacheEntity? = null): CacheEntity? =
+        fetchFull(gccode, base).cache
 
     /** Čte JSON logbook endpoint. Vyžaduje user token z detail page (`userToken=`). */
     suspend fun fetchLogs(gccode: String, userToken: String, count: Int = 25): List<LogEntity> =

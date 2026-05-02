@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 data class CacheDetailUiState(
     val cache: CacheEntity? = null,
     val logs: List<LogEntity> = emptyList(),
+    val imageUrls: List<String> = emptyList(),
     val refreshing: Boolean = false,
     val error: String? = null
 )
@@ -41,7 +42,6 @@ class CacheDetailViewModel(
                     _state.update { it.copy(cache = cache, logs = logs) }
                 }
         }
-        // Při prvním otevření vždy zkusíme fetchnout čerstvý detail
         refresh()
     }
 
@@ -50,7 +50,8 @@ class CacheDetailViewModel(
         _state.update { it.copy(refreshing = true, error = null) }
         viewModelScope.launch {
             try {
-                container.cacheRepository.fetchDetail(gccode)
+                val result = container.cacheRepository.fetchDetailFull(gccode)
+                _state.update { it.copy(imageUrls = result.imageUrls) }
             } catch (t: Throwable) {
                 _state.update { it.copy(error = t.message ?: "Chyba načítání") }
             } finally {

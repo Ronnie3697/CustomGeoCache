@@ -28,6 +28,10 @@ object MapMarkerIcons {
         const val LETTERBOX = "icon-letterbox"
         const val DEFAULT = "icon-default"
 
+        // Decoration overlays (smajlík = found, disketka = offline)
+        const val DECOR_FOUND = "decor-found"
+        const val DECOR_OFFLINE = "decor-offline"
+
         fun forCacheType(type: String): String = when {
             type.startsWith("Trad") -> TRADITIONAL
             type.startsWith("Multi") -> MULTI
@@ -51,7 +55,9 @@ object MapMarkerIcons {
         Id.VIRTUAL     to createPinIcon("V", 0xFF6A1B9A.toInt()),     // fialová
         Id.WHERIGO     to createPinIcon("W", 0xFFF9A825.toInt()),     // žlutá
         Id.LETTERBOX   to createPinIcon("L", 0xFF455A64.toInt()),     // šedomodrá
-        Id.DEFAULT     to createPinIcon("•", 0xFF616161.toInt())      // šedá
+        Id.DEFAULT     to createPinIcon("•", 0xFF616161.toInt()),     // šedá
+        Id.DECOR_FOUND   to createSmileyIcon(),
+        Id.DECOR_OFFLINE to createFloppyIcon()
     )
 
     /**
@@ -112,6 +118,83 @@ object MapMarkerIcons {
         }
         val textY = centerY - (text.descent() + text.ascent()) / 2
         c.drawText(letter, centerX, textY, text)
+
+        return bm
+    }
+
+    /** Zelený kruh s usmívajícím se obličejem — značí, že keš už byla zalogována. */
+    private fun createSmileyIcon(): Bitmap {
+        val size = 56
+        val bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bm)
+        val cx = size / 2f
+        val cy = size / 2f
+        val outerR = size / 2f - 2
+
+        // Bílý okraj
+        val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        c.drawCircle(cx, cy, outerR, white)
+
+        // Žlutá výplň (klasický smajlík)
+        val yellow = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFC107.toInt() }
+        c.drawCircle(cx, cy, outerR - 4, yellow)
+
+        // Oči
+        val black = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+        c.drawCircle(cx - 7, cy - 4, 3.5f, black)
+        c.drawCircle(cx + 7, cy - 4, 3.5f, black)
+
+        // Úsměv
+        val smile = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+            strokeCap = Paint.Cap.ROUND
+        }
+        val rect = android.graphics.RectF(cx - 9f, cy - 4f, cx + 9f, cy + 11f)
+        c.drawArc(rect, 20f, 140f, false, smile)
+
+        return bm
+    }
+
+    /** Šedá disketka — značí, že keš je stažená lokálně (s detailem, popisem, hintem). */
+    private fun createFloppyIcon(): Bitmap {
+        val size = 56
+        val bm = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bm)
+
+        val pad = 4f
+        val white = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        c.drawRoundRect(0f, 0f, size.toFloat(), size.toFloat(), 8f, 8f, white)
+
+        // Tělo disketky
+        val body = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF455A64.toInt() }
+        c.drawRoundRect(pad, pad, size - pad, size - pad, 4f, 4f, body)
+
+        // Horní kovová slot (uřezaný roh)
+        val slot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF263238.toInt() }
+        val slotW = size * 0.55f
+        val slotH = size * 0.32f
+        c.drawRect(
+            (size - slotW) / 2f, pad + 1f,
+            (size + slotW) / 2f, pad + slotH,
+            slot
+        )
+        // bílý čtverec uvnitř slotu (mock label)
+        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+        c.drawRect(
+            (size - slotW * 0.55f) / 2f, pad + 4f,
+            (size + slotW * 0.55f) / 2f, pad + slotH - 3f,
+            label
+        )
+
+        // Štítek dole
+        val sticker = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFECEFF1.toInt() }
+        c.drawRect(
+            pad + 4f, size * 0.55f,
+            size - pad - 4f, size - pad - 4f,
+            sticker
+        )
 
         return bm
     }

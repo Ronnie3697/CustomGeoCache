@@ -14,9 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
@@ -132,6 +136,11 @@ fun CacheDetailScreen(
             if (!cache.attributes.isNullOrBlank()) {
                 item { SectionTitle("Atributy") }
                 item { AttributesRow(cache.attributes) }
+            }
+
+            if (state.imageUrls.isNotEmpty()) {
+                item { SectionTitle("Obrázky (${state.imageUrls.size})") }
+                item { ImagesRow(state.imageUrls) }
             }
 
             if (state.logs.isNotEmpty()) {
@@ -279,6 +288,30 @@ private fun AttributesRow(csv: String) {
     ) {
         list.forEach { attr ->
             AssistChip(onClick = {}, label = { Text(attr) })
+        }
+    }
+}
+
+@Composable
+private fun ImagesRow(urls: List<String>) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(urls, key = { it }) { url ->
+            Card(
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .width(180.dp)
+                    .height(180.dp)
+            ) {
+                AsyncImage(
+                    model = url,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 }

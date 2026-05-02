@@ -56,6 +56,31 @@ class CacheRepository(
         fresh
     }
 
+    /** Vrátí detail + obrázky + uloží detail do DB + spustí refresh logbook s userTokenem. */
+    suspend fun fetchDetailFull(gccode: String): DetailResult = withContext(Dispatchers.IO) {
+        val base = dao.getByGcCode(gccode)
+        val full = detailApi.fetchFull(gccode, base)
+        val cache = full.cache ?: return@withContext DetailResult(base, emptyList(), 0)
+        dao.upsert(cache)
+
+        val logsCount = if (full.userToken != null) {
+            val logs = detailApi.fetchLogs(gccode, full.userToken)
+            if (logs.isNotEmpty()) {
+                dao.deleteLogsForCache(gccode)
+                dao.insertLogs(logs)
+            }
+            logs.size
+        } else 0
+
+        DetailResult(cache, full.imageUrls, logsCount)
+    }
+
+    data class DetailResult(
+        val cache: CacheEntity?,
+        val imageUrls: List<String>,
+        val logsCount: Int
+    )
+
     /** Stáhne nejnovější logy a uloží je do DB. */
     suspend fun refreshLogs(gccode: String, userToken: String): Int = withContext(Dispatchers.IO) {
         val logs = detailApi.fetchLogs(gccode, userToken)

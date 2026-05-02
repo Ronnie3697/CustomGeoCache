@@ -13,6 +13,24 @@ import java.util.regex.Pattern
  */
 object GcDetailParser {
 
+    /** Extrahuje URL obrázků z popisu keše. Filtruje odkazy mimo geocaching.com a typické UI ikony. */
+    fun extractImages(html: String): List<String> {
+        val doc = Jsoup.parse(html)
+        val descEls = doc.select(
+            "span#ctl00_ContentBody_LongDescription img, " +
+            "span#ctl00_ContentBody_ShortDescription img"
+        )
+        return descEls.mapNotNull { el ->
+            val src = el.absUrl("src").ifBlank { el.attr("src") }
+            src.takeIf {
+                it.isNotBlank() &&
+                !it.contains("/images/wpttypes/") &&        // ikony typů kešek
+                !it.contains("/images/icons/attributes/") && // ikony attributů
+                !it.contains("blank-")
+            }
+        }.distinct()
+    }
+
     fun parse(gccode: String, html: String, baseFromSearch: CacheEntity? = null): CacheEntity? {
         val doc = Jsoup.parse(html)
 
