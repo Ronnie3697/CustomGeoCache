@@ -126,29 +126,49 @@ class GcDetailApi(private val client: OkHttpClient) {
         }
 
     private fun parseLogs(gccode: String, json: String): List<LogEntity> = runCatching {
-        val type = Types.newParameterizedType(LogbookResponse::class.java)
-        val adapter = moshi.adapter(LogbookResponse::class.java)
-        val parsed = adapter.fromJson(json) ?: return@runCatching emptyList<LogEntity>()
-        parsed.data.orEmpty().map { d ->
-            LogEntity(
+        // Plain JSON parsing přes org.json — vyhneme se Moshi reflection issues s PascalCase
+        // a nečekanými typy v jednotlivých polích logu (Images, AccountGuid atd.)
+        val root = org.json.JSONObject(json)
+        val status = root.optString("status")
+        if (status != "success") {
+            android.util.Log.w(TAG, "parseLogs: status=$status")
+            return@runCatching emptyList<LogEntity>()
+        }
+        val data = root.optJSONArray("data") ?: return@runCatching emptyList<LogEntity>()
+        val out = ArrayList<LogEntity>(data.length())
+        for (i in 0 until data.length()) {
+            val o = data.optJSONObject(i) ?: continue
+            out += LogEntity(
                 gccode = gccode,
-                type = d.LogType.orEmpty(),
-                author = d.UserName.orEmpty(),
-                dateMillis = parseLogDate(d.Visited),
-                text = d.LogText.orEmpty()
+                type = o.optString("LogType", ""),
+                author = o.optString("UserName", ""),
+                dateMillis = parseLogDate(o.optString("Visited", "")),
+                text = o.optString("LogText", "")
             )
         }
-    }.getOrElse { emptyList() }
+        out
+    }.getOrElse { t ->
+        android.util.Log.w(TAG, "parseLogs threw", t)
+        emptyList()
+    }
 
     private fun parseLogDate(visited: String?): Long {
         if (visited.isNullOrBlank()) return System.currentTimeMillis()
-        // visited is ISO-ish, e.g. "9/14/2024" or "2024-09-14T..." — graceful fallback
-        return try {
-            java.text.SimpleDateFormat("M/d/yyyy", java.util.Locale.US).parse(visited)?.time
-                ?: System.currentTimeMillis()
-        } catch (_: Throwable) {
-            System.currentTimeMillis()
+        // gc.com posílá různé formáty: "M/d/yyyy" (US), "yyyy-MM-dd...", "d.M.yyyy". Zkusíme po pořadě.
+        val formats = listOf(
+            "M/d/yyyy",
+            "MM/dd/yyyy",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd",
+            "d.M.yyyy"
+        )
+        for (fmt in formats) {
+            try {
+                return java.text.SimpleDateFormat(fmt, java.util.Locale.US).parse(visited)?.time
+                    ?: continue
+            } catch (_: Throwable) { /* try next */ }
         }
+        return System.currentTimeMillis()
     }
 
     @JsonClass(generateAdapter = true)

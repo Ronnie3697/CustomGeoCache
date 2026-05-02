@@ -21,8 +21,8 @@ android {
         applicationId = "com.customgeocache.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.3.0"
+        versionCode = 18
+        versionName = "0.3.1"
 
         buildConfigField("String", "MAPY_CZ_API_KEY_DEFAULT", "\"$mapyCzApiKey\"")
     }
