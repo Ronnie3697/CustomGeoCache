@@ -29,9 +29,11 @@ enum class MapyLayer(val id: String, val displayName: String, val maxZoom: Int) 
 
 object MapyStyles {
 
+    // Single-quotes uvnitř HTML, ať to neuteklo z JSON stringu (double-quotes by uzavřely
+    // JSON value předčasně a parser by failnul). HTML s single-quotes je validní.
     private const val ATTRIBUTION =
-        "&copy; <a href=\"https://mapy.com\">Seznam.cz, a.s.</a>, " +
-        "<a href=\"https://www.openstreetmap.org/copyright\">OpenStreetMap</a> contributors"
+        "&copy; <a href='https://mapy.com'>Seznam.cz, a.s.</a>, " +
+        "<a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors"
 
     /** XYZ tile URL šablona. MapLibre {z}/{x}/{y} placeholdery musí zůstat nezměněné. */
     fun tileUrl(layer: MapyLayer, apiKey: String): String =
@@ -42,7 +44,7 @@ object MapyStyles {
      * Vrácený řetězec se předá do `Style.Builder().fromJson(...)`.
      */
     fun rasterStyleJson(layer: MapyLayer, apiKey: String): String {
-        val tile = tileUrl(layer, apiKey).replace("\"", "\\\"")
+        val tile = tileUrl(layer, apiKey)
         return """
             {
               "version": 8,
