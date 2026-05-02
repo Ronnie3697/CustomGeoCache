@@ -15,11 +15,15 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.customgeocache.app.CustomGeoCacheApp
 import com.customgeocache.app.R
 import com.customgeocache.app.ui.caches.CacheListScreen
 import com.customgeocache.app.ui.compass.CompassScreen
@@ -30,12 +34,22 @@ enum class HomeTab { MAP, CACHES, COMPASS }
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    initialTab: HomeTab = HomeTab.MAP,
     onOpenSettings: () -> Unit,
     onOpenCache: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
-    var tab by rememberSaveable { mutableStateOf(initialTab) }
+    val context = LocalContext.current
+    val activeStore = (context.applicationContext as CustomGeoCacheApp).container.activeCacheStore
+
+    var tab by rememberSaveable { mutableStateOf(HomeTab.MAP) }
+    val requestedTab by activeStore.requestedTab.collectAsStateWithLifecycle(initialValue = null)
+
+    LaunchedEffect(requestedTab) {
+        requestedTab?.let { name ->
+            runCatching { HomeTab.valueOf(name) }.getOrNull()?.let { tab = it }
+            activeStore.consumeRequestedTab()
+        }
+    }
 
     Scaffold(
         topBar = {
