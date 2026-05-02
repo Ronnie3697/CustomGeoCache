@@ -21,8 +21,8 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Login
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -116,10 +116,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                         IconButton(onClick = {
                             scope.launch { app.container.gcLogin.logout() }
                         }) {
-                            Icon(Icons.Default.Logout, contentDescription = stringResource(R.string.settings_logout))
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = stringResource(R.string.settings_logout))
                         }
                     } else {
-                        Icon(Icons.Default.Login, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null)
                     }
                 }
             )

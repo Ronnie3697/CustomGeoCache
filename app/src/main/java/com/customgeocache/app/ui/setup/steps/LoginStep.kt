@@ -14,7 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Card
@@ -58,7 +58,7 @@ fun LoginStep(
         verticalArrangement = Arrangement.Top
     ) {
         Icon(
-            imageVector = Icons.Default.Login,
+            imageVector = Icons.AutoMirrored.Filled.Login,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(48.dp)
