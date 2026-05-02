@@ -256,8 +256,16 @@ fun MapScreen(
         }
 
         selectedCache?.let { cache ->
+            val distanceText = location?.let { loc ->
+                com.customgeocache.app.util.GeoUtils.formatDistance(
+                    com.customgeocache.app.util.GeoUtils.distanceMeters(
+                        loc.latitude, loc.longitude, cache.lat, cache.lon
+                    )
+                )
+            }
             CachePreviewCard(
                 cache = cache,
+                distanceText = distanceText,
                 onDismiss = { selectedCache = null },
                 onOpenDetail = {
                     selectedCache = null
@@ -423,6 +431,7 @@ private fun LayerPickerCard(
 @Composable
 private fun CachePreviewCard(
     cache: CacheEntity,
+    distanceText: String?,
     onDismiss: () -> Unit,
     onOpenDetail: () -> Unit,
     onNavigate: () -> Unit,
@@ -441,6 +450,16 @@ private fun CachePreviewCard(
                         color = MaterialTheme.colorScheme.primary)
                     Text(cache.name, style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold, maxLines = 2)
+                }
+                if (distanceText != null) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text("Vzdálenost", style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(distanceText, style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary)
+                    }
+                    Spacer(Modifier.size(4.dp))
                 }
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Default.Close, contentDescription = null)
