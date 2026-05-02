@@ -60,29 +60,39 @@ class CacheRepository(
     suspend fun fetchDetailFull(gccode: String): DetailResult = withContext(Dispatchers.IO) {
         val base = dao.getByGcCode(gccode)
         val full = detailApi.fetchFull(gccode, base)
-        val cache = full.cache ?: return@withContext DetailResult(base, emptyList(), 0)
+        val cache = full.cache
+            ?: return@withContext DetailResult(base, emptyList(), 0,
+                logsStatus = "Detail keše se nepodařilo stáhnout.")
         dao.upsert(cache)
 
-        val logsCount = if (full.userToken != null) {
-            android.util.Log.i("CGC.Repo", "fetchDetailFull: refreshing logs for $gccode with userToken")
-            val logs = detailApi.fetchLogs(gccode, full.userToken)
-            if (logs.isNotEmpty()) {
-                dao.deleteLogsForCache(gccode)
-                dao.insertLogs(logs)
-            }
-            logs.size
-        } else {
-            android.util.Log.w("CGC.Repo", "fetchDetailFull: no userToken extracted from $gccode html — logs not fetched")
-            0
+        if (full.userToken == null) {
+            android.util.Log.w("CGC.Repo",
+                "fetchDetailFull: no userToken extracted from $gccode html — logs not fetched")
+            return@withContext DetailResult(
+                cache, full.imageUrls, 0,
+                logsStatus = "Z detail stránky se nepodařilo extrahovat userToken — server tě možná odhlásil. Zkus se znovu přihlásit v Nastavení."
+            )
         }
 
-        DetailResult(cache, full.imageUrls, logsCount)
+        val result = detailApi.fetchLogsResult(gccode, full.userToken)
+        when (result) {
+            is com.customgeocache.app.data.api.GcDetailApi.LogsResult.Success -> {
+                if (result.logs.isNotEmpty()) {
+                    dao.deleteLogsForCache(gccode)
+                    dao.insertLogs(result.logs)
+                }
+                return@withContext DetailResult(cache, full.imageUrls, result.logs.size, null)
+            }
+            is com.customgeocache.app.data.api.GcDetailApi.LogsResult.Failure ->
+                return@withContext DetailResult(cache, full.imageUrls, 0, result.message)
+        }
     }
 
     data class DetailResult(
         val cache: CacheEntity?,
         val imageUrls: List<String>,
-        val logsCount: Int
+        val logsCount: Int,
+        val logsStatus: String?  // null = OK; jinak diagnostická hláška
     )
 
     /** Stáhne nejnovější logy a uloží je do DB. */

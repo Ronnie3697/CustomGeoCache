@@ -1,6 +1,7 @@
 package com.customgeocache.app.ui.home
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Info
@@ -37,6 +38,7 @@ enum class HomeTab { MAP, CACHES, COMPASS }
 @Composable
 fun HomeScreen(
     onOpenSettings: () -> Unit,
+    onOpenProfile: () -> Unit = {},
     onOpenCache: (String) -> Unit,
     onOpenLog: (String) -> Unit
 ) {
@@ -77,6 +79,9 @@ fun HomeScreen(
                         IconButton(onClick = { onOpenLog(activeCache!!.gccode) }) {
                             Icon(Icons.Default.Edit, contentDescription = "Logovat")
                         }
+                    }
+                    IconButton(onClick = onOpenProfile) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = "Profil")
                     }
                     IconButton(onClick = onOpenSettings) {
                         Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.nav_settings))

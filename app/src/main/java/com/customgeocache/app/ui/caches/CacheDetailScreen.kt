@@ -164,10 +164,11 @@ fun CacheDetailScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = if (state.refreshing)
-                                "Načítám logy…"
-                            else
-                                "Logy se zatím nepodařilo načíst. Klepni nahoře na refresh nebo zkontroluj přihlášení.",
+                            text = when {
+                                state.refreshing -> "Načítám logy…"
+                                state.logsStatus != null -> state.logsStatus!!
+                                else -> "Logy se zatím nepodařilo načíst. Klepni nahoře na refresh nebo zkontroluj přihlášení."
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(16.dp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant

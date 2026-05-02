@@ -72,9 +72,14 @@ class GcDetailApi(private val client: OkHttpClient) {
     suspend fun fetchDetail(gccode: String, base: CacheEntity? = null): CacheEntity? =
         fetchFull(gccode, base).cache
 
+    sealed class LogsResult {
+        data class Success(val logs: List<LogEntity>) : LogsResult()
+        data class Failure(val message: String) : LogsResult()
+    }
+
     /** Čte JSON logbook endpoint. Vyžaduje user token z detail page (`userToken=`).
      *  V c:geo je to GET s query params (ne POST), takže to děláme stejně. */
-    suspend fun fetchLogs(gccode: String, userToken: String, count: Int = 25): List<LogEntity> =
+    suspend fun fetchLogsResult(gccode: String, userToken: String, count: Int = 25): LogsResult =
         withContext(Dispatchers.IO) {
             val url = "https://www.geocaching.com/seek/geocache.logbook".toHttpUrl().newBuilder()
                 .addQueryParameter("tkn", userToken)
@@ -87,23 +92,37 @@ class GcDetailApi(private val client: OkHttpClient) {
                 .get()
                 .header("Accept", "application/json, text/javascript, */*; q=0.01")
                 .header("X-Requested-With", "XMLHttpRequest")
+                .header("Referer", "https://www.geocaching.com/geocache/$gccode")
                 .build()
             try {
                 client.newCall(req).execute().use { resp ->
                     if (!resp.isSuccessful) {
                         Log.w(TAG, "fetchLogs $gccode HTTP ${resp.code}")
-                        return@withContext emptyList()
+                        return@withContext LogsResult.Failure("Server vrátil HTTP ${resp.code}")
                     }
-                    val raw = resp.body?.string() ?: return@withContext emptyList()
-                    Log.i(TAG, "fetchLogs $gccode raw[${raw.length}B]: ${raw.take(200)}")
+                    val raw = resp.body?.string()
+                        ?: return@withContext LogsResult.Failure("Prázdná odpověď serveru")
+                    Log.i(TAG, "fetchLogs $gccode raw[${raw.length}B]: ${raw.take(300)}")
                     val logs = parseLogs(gccode, raw)
                     Log.i(TAG, "fetchLogs $gccode -> ${logs.size} logs parsed")
-                    logs
+                    if (logs.isEmpty() && raw.isNotBlank()) {
+                        return@withContext LogsResult.Failure(
+                            "Server vrátil ${raw.length}B, ale žádné logy se nepodařilo naparsovat. Začátek: ${raw.take(80)}"
+                        )
+                    }
+                    LogsResult.Success(logs)
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "fetchLogs failed", t)
-                emptyList()
+                LogsResult.Failure("Síťová chyba: ${t.message ?: t.javaClass.simpleName}")
             }
+        }
+
+    /** Zachováno pro kompatibilitu — vrátí jen list (prázdný při chybě). */
+    suspend fun fetchLogs(gccode: String, userToken: String, count: Int = 25): List<LogEntity> =
+        when (val r = fetchLogsResult(gccode, userToken, count)) {
+            is LogsResult.Success -> r.logs
+            is LogsResult.Failure -> emptyList()
         }
 
     private fun parseLogs(gccode: String, json: String): List<LogEntity> = runCatching {

@@ -3,6 +3,7 @@ package com.customgeocache.app.data
 import android.content.Context
 import com.customgeocache.app.data.api.GcDetailApi
 import com.customgeocache.app.data.api.GcLogApi
+import com.customgeocache.app.data.api.GcProfileApi
 import com.customgeocache.app.data.api.GcSearchApi
 import com.customgeocache.app.data.auth.GCLogin
 import com.customgeocache.app.data.auth.PersistentCookieJar
@@ -40,6 +41,7 @@ class AppContainer(private val context: Context) {
     val gcSearchApi: GcSearchApi by lazy { GcSearchApi(httpClient, gcAuth) }
     val gcDetailApi: GcDetailApi by lazy { GcDetailApi(httpClient) }
     val gcLogApi: GcLogApi by lazy { GcLogApi(httpClient, gcAuth) }
+    val gcProfileApi: GcProfileApi by lazy { GcProfileApi(httpClient) }
 
     val activeCacheStore: ActiveCacheStore by lazy { ActiveCacheStore() }
 

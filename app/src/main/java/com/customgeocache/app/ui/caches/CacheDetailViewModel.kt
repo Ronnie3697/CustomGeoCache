@@ -21,7 +21,8 @@ data class CacheDetailUiState(
     val logs: List<LogEntity> = emptyList(),
     val imageUrls: List<String> = emptyList(),
     val refreshing: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val logsStatus: String? = null  // diagnostika: null = OK, jinak důvod prázdných logů
 )
 
 class CacheDetailViewModel(
@@ -51,7 +52,10 @@ class CacheDetailViewModel(
         viewModelScope.launch {
             try {
                 val result = container.cacheRepository.fetchDetailFull(gccode)
-                _state.update { it.copy(imageUrls = result.imageUrls) }
+                _state.update { it.copy(
+                    imageUrls = result.imageUrls,
+                    logsStatus = result.logsStatus
+                ) }
             } catch (t: Throwable) {
                 _state.update { it.copy(error = t.message ?: "Chyba načítání") }
             } finally {

@@ -37,6 +37,45 @@ class GcSearchApi(
         data class Error(val message: String) : Result()
     }
 
+    /** Stáhne keše, které našel daný uživatel (`fb=username`). Total v response = počet všech. */
+    suspend fun searchFoundBy(
+        username: String, take: Int = 200, skip: Int = 0
+    ): Result = withContext(Dispatchers.IO) {
+        val token = auth.authorizationHeader() ?: return@withContext Result.NotAuthenticated
+        val url = "https://www.geocaching.com/api/proxy/web/search/v2".toHttpUrl().newBuilder()
+            .addQueryParameter("fb", username)
+            .addQueryParameter("hf", "0")
+            .addQueryParameter("take", take.toString())
+            .addQueryParameter("skip", skip.toString())
+            .addQueryParameter("app", "cgeo")
+            .addQueryParameter("properties", "callernote")
+            .addQueryParameter("sort", "DateLastVisited")
+            .addQueryParameter("asc", "false")
+            .build()
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", token)
+            .header("Accept", "application/json")
+            .get()
+            .build()
+        try {
+            client.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    auth.invalidate()
+                    return@withContext Result.NotAuthenticated
+                }
+                if (!resp.isSuccessful) return@withContext Result.Error("HTTP ${resp.code}")
+                val body = resp.body?.string() ?: return@withContext Result.Error("Empty body")
+                val dto = adapter.fromJson(body) ?: return@withContext Result.Error("Bad JSON")
+                val caches = dto.results.orEmpty().mapNotNull(::toCacheEntity)
+                Result.Success(caches = caches, total = dto.total ?: caches.size)
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "searchFoundBy failed", t)
+            Result.Error(t.message ?: "network error")
+        }
+    }
+
     /** lat/lon pole rohů: south, west, north, east */
     suspend fun searchBox(
         south: Double, west: Double, north: Double, east: Double,
