@@ -39,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,13 +56,16 @@ import com.customgeocache.app.CustomGeoCacheApp
 import com.customgeocache.app.R
 import com.customgeocache.app.data.api.GcSearchApi
 import com.customgeocache.app.data.db.entities.CacheEntity
+import com.customgeocache.app.data.state.MapCameraState
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.launch
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
+import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.geometry.LatLngBounds
 import org.maplibre.android.log.Logger
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
@@ -100,9 +102,28 @@ fun MapScreen(
 
     val locationPermission = rememberPermissionState(android.Manifest.permission.ACCESS_FINE_LOCATION)
 
-    // Update markery vždy, když se cache list změní
     LaunchedEffect(caches, styleRef) {
-        styleRef?.let { MapMarkers.update(it, caches) }
+        styleRef?.let {
+            MapMarkers.update(it, caches)
+            Log.i(TAG, "Markers updated: ${caches.size} caches")
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            // Při odchodu z Map tabu uložíme aktuální polohu kamery
+            mapRef?.cameraPosition?.let { cp ->
+                activeStore.saveMapCamera(
+                    MapCameraState(
+                        lat = cp.target?.latitude ?: 49.7437,
+                        lon = cp.target?.longitude ?: 15.3386,
+                        zoom = cp.zoom,
+                        bearing = cp.bearing,
+                        tilt = cp.tilt
+                    )
+                )
+            }
+        }
     }
 
     Box(
@@ -116,21 +137,23 @@ fun MapScreen(
             MapLibreView(
                 apiKey = apiKey!!,
                 layer = layer,
+                savedCamera = activeStore.mapCamera,
                 onMapReady = { map, style ->
                     mapRef = map
                     styleRef = style
                     MapMarkers.ensureLayers(style)
                     MapMarkers.update(style, caches)
+                    Log.i(TAG, "Map ready, markers: ${caches.size}")
                     map.addOnMapClickListener { latLng ->
                         val pixel = map.projection.toScreenLocation(latLng)
-                        val features = map.queryRenderedFeatures(pixel, MapMarkers.LAYER_CIRCLE)
+                        val features = map.queryRenderedFeatures(
+                            pixel, MapMarkers.LAYER_CIRCLE, MapMarkers.LAYER_LABEL
+                        )
                         val gc = features.firstNotNullOfOrNull {
                             it.getStringProperty("gccode")
                         }
                         if (gc != null) {
-                            scope.launch {
-                                selectedCache = caches.firstOrNull { it.gccode == gc }
-                            }
+                            selectedCache = caches.firstOrNull { it.gccode == gc }
                         } else {
                             selectedCache = null
                         }
@@ -164,7 +187,7 @@ fun MapScreen(
             }
         }
 
-        // Search-here FAB (extended) — uprostřed dole
+        // Search-here FAB
         ExtendedFloatingActionButton(
             onClick = {
                 val map = mapRef ?: return@ExtendedFloatingActionButton
@@ -179,8 +202,14 @@ fun MapScreen(
                     )
                     searching = false
                     when (r) {
-                        is GcSearchApi.Result.Success ->
+                        is GcSearchApi.Result.Success -> {
                             snackbar.showSnackbar("Nahráno ${r.caches.size} kešek (z ${r.total})")
+                            // Pokud našlo keše, fitneme kameru na jejich bounding box,
+                            // ať uživatel hned vidí, kde jsou.
+                            if (r.caches.isNotEmpty() && r.caches.size <= 200) {
+                                fitBoundsToCaches(map, r.caches)
+                            }
+                        }
                         is GcSearchApi.Result.NotAuthenticated ->
                             snackbar.showSnackbar("Nejsi přihlášený na geocaching.com.")
                         is GcSearchApi.Result.Error ->
@@ -220,7 +249,6 @@ fun MapScreen(
             )
         }
 
-        // Cache preview bottom sheet
         selectedCache?.let { cache ->
             CachePreviewCard(
                 cache = cache,
@@ -252,6 +280,29 @@ fun MapScreen(
     }
 }
 
+private fun fitBoundsToCaches(map: MapLibreMap, caches: List<CacheEntity>) {
+    if (caches.isEmpty()) return
+    if (caches.size == 1) {
+        map.animateCamera(CameraUpdateFactory.newLatLngZoom(
+            LatLng(caches[0].lat, caches[0].lon), 14.0
+        ))
+        return
+    }
+    var minLat = Double.MAX_VALUE; var maxLat = -Double.MAX_VALUE
+    var minLon = Double.MAX_VALUE; var maxLon = -Double.MAX_VALUE
+    for (c in caches) {
+        if (c.lat < minLat) minLat = c.lat
+        if (c.lat > maxLat) maxLat = c.lat
+        if (c.lon < minLon) minLon = c.lon
+        if (c.lon > maxLon) maxLon = c.lon
+    }
+    val bounds = LatLngBounds.Builder()
+        .include(LatLng(minLat, minLon))
+        .include(LatLng(maxLat, maxLon))
+        .build()
+    map.animateCamera(CameraUpdateFactory.newLatLngBounds(bounds, 80))
+}
+
 @Composable
 private fun MissingApiKey() {
     Column(
@@ -272,6 +323,7 @@ private fun MissingApiKey() {
 private fun MapLibreView(
     apiKey: String,
     layer: MapyLayer,
+    savedCamera: MapCameraState?,
     onMapReady: (MapLibreMap, Style) -> Unit
 ) {
     val context = LocalContext.current
@@ -302,12 +354,22 @@ private fun MapLibreView(
                 map.setStyle(Style.Builder().fromJson(styleJson)) { style ->
                     onMapReady(map, style)
                 }
-                if (map.cameraPosition.zoom < 1.0) {
-                    map.cameraPosition = CameraPosition.Builder()
+                // Obnov kameru, pokud máme uloženou pozici (návrat z jiného tabu).
+                // Jinak zoom 7 / střed ČR.
+                val target = if (savedCamera != null) {
+                    CameraPosition.Builder()
+                        .target(LatLng(savedCamera.lat, savedCamera.lon))
+                        .zoom(savedCamera.zoom)
+                        .bearing(savedCamera.bearing)
+                        .tilt(savedCamera.tilt)
+                        .build()
+                } else {
+                    CameraPosition.Builder()
                         .target(LatLng(49.7437, 15.3386))
                         .zoom(7.0)
                         .build()
                 }
+                map.cameraPosition = target
             }
         }
     )

@@ -29,7 +29,7 @@ object MapMarkers {
         }
         if (style.getLayer(LAYER_CIRCLE) == null) {
             val circle = CircleLayer(LAYER_CIRCLE, SOURCE_ID).withProperties(
-                PropertyFactory.circleRadius(10f),
+                PropertyFactory.circleRadius(13f),
                 PropertyFactory.circleColor(
                     Expression.match(
                         Expression.get("typeShort"),
@@ -44,17 +44,20 @@ object MapMarkers {
                     )
                 ),
                 PropertyFactory.circleStrokeColor("#FFFFFF"),
-                PropertyFactory.circleStrokeWidth(2.5f)
+                PropertyFactory.circleStrokeWidth(3f),
+                PropertyFactory.circleOpacity(0.95f)
             )
             style.addLayer(circle)
         }
         if (style.getLayer(LAYER_LABEL) == null) {
             val label = SymbolLayer(LAYER_LABEL, SOURCE_ID).withProperties(
                 PropertyFactory.textField(Expression.get("typeShort")),
-                PropertyFactory.textSize(11f),
+                PropertyFactory.textSize(13f),
                 PropertyFactory.textColor("#FFFFFF"),
                 PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textIgnorePlacement(true)
+                PropertyFactory.textIgnorePlacement(true),
+                PropertyFactory.textHaloColor("#000000"),
+                PropertyFactory.textHaloWidth(0.5f)
             )
             style.addLayer(label)
         }
