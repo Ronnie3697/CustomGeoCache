@@ -60,8 +60,19 @@ class LogEntryViewModel(
                 date = s.date,
                 usedFavoritePoint = s.usedFavoritePoint
             )) {
-                is GcLogApi.Result.Success -> _state.update {
-                    it.copy(submitting = false, submittedLogCode = r.logCode.ifBlank { "OK" })
+                is GcLogApi.Result.Success -> {
+                    // Po úspěšném "Found it" smažeme keš z lokální DB — uživatel ji
+                    // už zalogoval, nepotřebuje ji držet offline. DNF/Note ponecháme
+                    // (uživatel se k ní pravděpodobně bude vracet).
+                    if (s.type == GcLogApi.LogType.FOUND) {
+                        container.cacheRepository.deleteCache(s.gccode)
+                        if (container.activeCacheStore.active.value?.gccode == s.gccode) {
+                            container.activeCacheStore.clear()
+                        }
+                    }
+                    _state.update {
+                        it.copy(submitting = false, submittedLogCode = r.logCode.ifBlank { "OK" })
+                    }
                 }
                 is GcLogApi.Result.NotAuthenticated -> _state.update {
                     it.copy(submitting = false, error = "Nejsi přihlášený. Přihlaš se v Nastavení.")

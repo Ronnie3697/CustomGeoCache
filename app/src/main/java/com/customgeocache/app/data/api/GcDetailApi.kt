@@ -10,7 +10,7 @@ import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.squareup.moshi.Types
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.FormBody
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 
@@ -65,24 +65,32 @@ class GcDetailApi(private val client: OkHttpClient) {
     suspend fun fetchDetail(gccode: String, base: CacheEntity? = null): CacheEntity? =
         fetchFull(gccode, base).cache
 
-    /** Čte JSON logbook endpoint. Vyžaduje user token z detail page (`userToken=`). */
+    /** Čte JSON logbook endpoint. Vyžaduje user token z detail page (`userToken=`).
+     *  V c:geo je to GET s query params (ne POST), takže to děláme stejně. */
     suspend fun fetchLogs(gccode: String, userToken: String, count: Int = 25): List<LogEntity> =
         withContext(Dispatchers.IO) {
-            val body = FormBody.Builder()
-                .add("tkn", userToken)
-                .add("idx", "1")
-                .add("num", count.toString())
-                .add("decrypt", "false")
+            val url = "https://www.geocaching.com/seek/geocache.logbook".toHttpUrl().newBuilder()
+                .addQueryParameter("tkn", userToken)
+                .addQueryParameter("idx", "1")
+                .addQueryParameter("num", count.toString())
+                .addQueryParameter("decrypt", "false")
                 .build()
             val req = Request.Builder()
-                .url("https://www.geocaching.com/seek/geocache.logbook")
-                .post(body)
+                .url(url)
+                .get()
+                .header("Accept", "application/json, text/javascript, */*; q=0.01")
+                .header("X-Requested-With", "XMLHttpRequest")
                 .build()
             try {
                 client.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) return@withContext emptyList()
+                    if (!resp.isSuccessful) {
+                        Log.w(TAG, "fetchLogs $gccode HTTP ${resp.code}")
+                        return@withContext emptyList()
+                    }
                     val raw = resp.body?.string() ?: return@withContext emptyList()
-                    parseLogs(gccode, raw)
+                    val logs = parseLogs(gccode, raw)
+                    Log.i(TAG, "fetchLogs $gccode -> ${logs.size} logs")
+                    logs
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "fetchLogs failed", t)
